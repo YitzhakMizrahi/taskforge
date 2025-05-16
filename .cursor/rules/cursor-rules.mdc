@@ -1,0 +1,108 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Cursor Development Rules and Best Practices
+
+## Code Quality Standards
+1. **Code Style**
+   - Follow Rust's official style guide
+   - Use `rustfmt` for consistent formatting
+   - Use `clippy` for linting
+   - Maximum line length: 100 characters
+   - Use meaningful variable and function names
+
+2. **Documentation**
+   - Document all public APIs and functions
+   - Include examples in documentation
+   - Keep README.md up to date
+   - Document complex algorithms and design decisions
+
+3. **Testing**
+   - Write unit tests for all functions
+   - Include integration tests for API endpoints
+   - Maintain test coverage above 80%
+   - Use property-based testing where appropriate
+
+4. **Error Handling**
+   - Use proper error types and custom error handling
+   - Provide meaningful error messages
+   - Log errors appropriately
+   - Handle edge cases gracefully
+
+5. **Performance**
+   - Profile code regularly
+   - Optimize critical paths
+   - Use appropriate data structures
+   - Consider memory usage and allocation patterns
+
+## Development Workflow
+1. **Version Control**
+   - Use meaningful commit messages
+   - Create feature branches for new features
+   - Review code before merging
+   - Keep commits atomic and focused
+
+2. **Code Review**
+   - Review for correctness, performance, and maintainability
+   - Check for security vulnerabilities
+   - Ensure proper error handling
+   - Verify documentation is complete
+
+3. **Dependencies**
+   - Keep dependencies up to date
+   - Document dependency choices
+   - Minimize external dependencies
+   - Use specific version numbers
+
+4. **Security**
+   - Follow security best practices
+   - Validate all input
+   - Use secure defaults
+   - Implement proper authentication and authorization
+
+## Project Structure
+1. **Organization**
+   - Follow Rust module best practices
+   - Separate concerns appropriately
+   - Use clear directory structure
+   - Maintain clean architecture
+
+2. **Configuration**
+   - Use environment variables for configuration
+   - Document all configuration options
+   - Provide sensible defaults
+   - Use type-safe configuration
+
+3. **Logging**
+   - Use structured logging
+   - Include appropriate log levels
+   - Log important events and errors
+   - Consider log rotation and storage
+
+## Communication
+1. **Documentation Updates**
+   - Update documentation with code changes
+   - Document breaking changes
+   - Keep changelog up to date
+   - Document known issues
+
+2. **Code Comments**
+   - Comment complex logic
+   - Explain non-obvious decisions
+   - Keep comments up to date
+   - Use TODO comments for future improvements
+
+## Continuous Improvement
+1. **Regular Reviews**
+   - Review and update these rules regularly
+   - Incorporate new best practices
+   - Remove outdated practices
+   - Adapt to project needs
+
+2. **Learning**
+   - Document lessons learned
+   - Share knowledge with team
+   - Keep up with Rust ecosystem
+   - Experiment with new approaches
