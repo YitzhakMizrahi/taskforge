@@ -1,7 +1,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
-use sqlx::{PgPool, FromRow};
-use serde::Serialize;
 use chrono::{DateTime, Utc};
+use serde::Serialize;
+use sqlx::{FromRow, PgPool};
 
 async fn health() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
@@ -18,11 +18,10 @@ struct User {
 }
 
 async fn list_users(pool: web::Data<PgPool>) -> impl Responder {
-    let users = sqlx::query_as::<_, User>(
-        "SELECT id, username, email, created_at FROM users ORDER BY id"
-    )
-    .fetch_all(pool.get_ref())
-    .await;
+    let users =
+        sqlx::query_as::<_, User>("SELECT id, username, email, created_at FROM users ORDER BY id")
+            .fetch_all(pool.get_ref())
+            .await;
 
     match users {
         Ok(users) => HttpResponse::Ok().json(users),
@@ -38,7 +37,9 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     env_logger::init();
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url).await.expect("Failed to connect to database");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to database");
 
     println!("Starting TaskForge server at http://127.0.0.1:8080");
     HttpServer::new(move || {
