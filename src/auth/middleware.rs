@@ -49,9 +49,7 @@ where
             || path.starts_with("/api/auth/register")
         {
             let fut = self.service.call(req);
-            return Box::pin(async move {
-                fut.await
-            });
+            return Box::pin(async move { fut.await });
         }
 
         let auth_header = req
@@ -62,15 +60,15 @@ where
 
         match auth_header {
             Some(token) => {
-                match verify_token(token) { // verify_token returns Result<Claims, AppError>
+                match verify_token(token) {
+                    // verify_token returns Result<Claims, AppError>
                     Ok(claims) => {
                         req.extensions_mut().insert(claims);
                         let fut = self.service.call(req);
-                        Box::pin(async move {
-                            fut.await
-                        })
+                        Box::pin(async move { fut.await })
                     }
-                    Err(app_err) => { // app_err is AppError
+                    Err(app_err) => {
+                        // app_err is AppError
                         Box::pin(async move { Err(app_err.into()) }) // Convert AppError to actix_web::Error
                     }
                 }

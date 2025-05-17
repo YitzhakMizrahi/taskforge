@@ -4,9 +4,9 @@ use actix_web::{test, web, App};
 use dotenv::dotenv;
 use serde_json::json;
 use sqlx::PgPool;
+use taskforge::models::{TaskPriority, TaskStatus};
 use taskforge::routes; // For routes::config
-use taskforge::routes::health; // For the health service // Added dotenv
-use taskforge::models::{TaskStatus, TaskPriority}; // Added imports for enums
+use taskforge::routes::health; // For the health service // Added dotenv // Added imports for enums
 
 #[actix_rt::test]
 async fn test_register_and_login_flow() {
@@ -39,7 +39,7 @@ async fn test_register_and_login_flow() {
             .service(
                 web::scope("/api")
                     .wrap(taskforge::auth::AuthMiddleware) // Apply AuthMiddleware here
-                    .configure(routes::config)
+                    .configure(routes::config),
             ),
     )
     .await;
@@ -149,7 +149,9 @@ async fn test_register_and_login_flow() {
         Some("todo") // Assuming TaskStatus::Todo serializes to "todo"
     );
     assert_eq!(
-        created_task_response.get("priority").and_then(|p| p.as_str()),
+        created_task_response
+            .get("priority")
+            .and_then(|p| p.as_str()),
         Some("medium") // Assuming TaskPriority::Medium serializes to "medium"
     );
     assert_eq!(

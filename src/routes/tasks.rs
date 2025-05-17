@@ -25,9 +25,9 @@ pub async fn get_tasks(
 
     // Use a temporary vector to hold string representations for ILIKE, or other string-based conditions
     // For direct enum/int binding, we'll bind them directly to the query object.
-    
+
     let mut conditions: Vec<String> = Vec::new();
-    
+
     if query_params.status.is_some() {
         conditions.push(format!("status = ${}", param_count));
         param_count += 1;
@@ -48,7 +48,10 @@ pub async fn get_tasks(
         conditions.push(format!("(title ILIKE ${}", param_count));
         param_count += 1;
         // For the second part of ILIKE, it reuses the same search term but needs a new placeholder
-        conditions.last_mut().unwrap().push_str(&format!(" OR description ILIKE ${})", param_count));
+        conditions
+            .last_mut()
+            .unwrap()
+            .push_str(&format!(" OR description ILIKE ${})", param_count));
         param_count += 1;
     }
 
@@ -56,7 +59,7 @@ pub async fn get_tasks(
         sql.push_str(" AND ");
         sql.push_str(&conditions.join(" AND "));
     }
-    
+
     sql.push_str(" ORDER BY created_at DESC");
 
     let mut query_builder = sqlx::query_as::<_, Task>(&sql);
@@ -76,9 +79,9 @@ pub async fn get_tasks(
     if let Some(search) = &query_params.search {
         let search_pattern = format!("%{}%", search);
         query_builder = query_builder.bind(search_pattern.clone()); // For title ILIKE
-        query_builder = query_builder.bind(search_pattern);         // For description ILIKE
+        query_builder = query_builder.bind(search_pattern); // For description ILIKE
     }
-    
+
     let tasks = query_builder.fetch_all(&**pool).await?;
 
     Ok(HttpResponse::Ok().json(tasks))
@@ -230,7 +233,7 @@ mod tests {
 
         let resp = test::call_service(&app, req).await;
         assert!(resp.status().is_client_error()); // Expect 422 for validation error
-        
+
         // Test title too long
         let long_title = "a".repeat(201);
         let req_long_title = test::TestRequest::post()
