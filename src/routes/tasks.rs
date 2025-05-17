@@ -197,22 +197,26 @@ pub async fn delete_task(
 
 #[cfg(test)]
 mod tests {
-    use crate::models::{TaskInput, TaskStatus, TaskPriority}; 
+    use crate::models::{TaskInput, TaskPriority, TaskStatus};
     use validator::Validate; // For .validate() method
 
     // No longer async, no actix_rt needed.
     // Remove #[ignore] as it should now pass as a unit test.
     #[test]
-    fn test_task_input_validation() { // Renamed for clarity
+    fn test_task_input_validation() {
+        // Renamed for clarity
         // Test empty title
         let invalid_input_empty_title = TaskInput {
             title: "".to_string(),
             description: Some("Test Description".to_string()),
             priority: Some(TaskPriority::High),
             status: TaskStatus::Todo,
-            due_date: None, 
+            due_date: None,
         };
-        assert!(invalid_input_empty_title.validate().is_err(), "Validation should fail for empty title.");
+        assert!(
+            invalid_input_empty_title.validate().is_err(),
+            "Validation should fail for empty title."
+        );
 
         // Test title too long (max 200 according to TaskInput struct)
         let long_title = "a".repeat(201);
@@ -223,7 +227,10 @@ mod tests {
             status: TaskStatus::InProgress,
             due_date: None,
         };
-        assert!(invalid_input_long_title.validate().is_err(), "Validation should fail for overly long title.");
+        assert!(
+            invalid_input_long_title.validate().is_err(),
+            "Validation should fail for overly long title."
+        );
 
         // Test valid input
         let valid_input = TaskInput {
@@ -233,7 +240,10 @@ mod tests {
             status: TaskStatus::Done,
             due_date: None,
         };
-        assert!(valid_input.validate().is_ok(), "Validation should pass for valid input.");
+        assert!(
+            valid_input.validate().is_ok(),
+            "Validation should pass for valid input."
+        );
 
         // Test description too long (max 1000 according to TaskInput struct)
         let long_description = "b".repeat(1001);
@@ -244,8 +254,11 @@ mod tests {
             status: TaskStatus::Todo,
             due_date: None,
         };
-        assert!(invalid_input_long_desc.validate().is_err(), "Validation should fail for overly long description.");
-    
+        assert!(
+            invalid_input_long_desc.validate().is_err(),
+            "Validation should fail for overly long description."
+        );
+
         // Test for priority and status fields (they are enums, no length validation now, but presence might be tested if they weren't Option<Enum>)
         // Since TaskInput.priority is Option<TaskPriority> and TaskInput.status is TaskStatus (not optional),
         // their validation is mostly about type correctness and presence for status, which serde handles at deserialization.

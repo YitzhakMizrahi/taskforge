@@ -90,9 +90,9 @@ pub async fn login(
 #[cfg(test)]
 mod tests {
     // Cleaned up imports for pure DTO validation tests
-    use crate::auth::{LoginRequest, RegisterRequest}; 
+    use crate::auth::{LoginRequest, RegisterRequest};
     use validator::Validate;
-    // No longer needed: 
+    // No longer needed:
     // use super::*;
     // use actix_web::test;
     // use serde_json::json;
@@ -101,27 +101,37 @@ mod tests {
     // use dotenv::dotenv; // dotenv::dotenv().ok(); was removed from test bodies
 
     #[test]
-    fn test_register_request_validation() { /* ... as refactored ... */ 
+    fn test_register_request_validation() {
+        /* ... as refactored ... */
         let invalid_email_input = RegisterRequest {
             username: "testuser".to_string(),
             email: "invalid-email".to_string(),
             password: "ValidPassword123!".to_string(),
         };
-        assert!(invalid_email_input.validate().is_err(), "Validation should fail for invalid email format.");
+        assert!(
+            invalid_email_input.validate().is_err(),
+            "Validation should fail for invalid email format."
+        );
 
         let short_password_input = RegisterRequest {
             username: "testuser".to_string(),
             email: "test@example.com".to_string(),
-            password: "short".to_string(), 
+            password: "short".to_string(),
         };
-        assert!(short_password_input.validate().is_err(), "Validation should fail for short password.");
+        assert!(
+            short_password_input.validate().is_err(),
+            "Validation should fail for short password."
+        );
 
         let short_username_input = RegisterRequest {
-            username: "u".to_string(), 
+            username: "u".to_string(),
             email: "test@example.com".to_string(),
             password: "ValidPassword123!".to_string(),
         };
-        assert!(short_username_input.validate().is_err(), "Validation should fail for short username.");
+        assert!(
+            short_username_input.validate().is_err(),
+            "Validation should fail for short username."
+        );
 
         let long_username = "a".repeat(33);
         let long_username_input = RegisterRequest {
@@ -129,47 +139,70 @@ mod tests {
             email: "test@example.com".to_string(),
             password: "ValidPassword123!".to_string(),
         };
-        assert!(long_username_input.validate().is_err(), "Validation should fail for long username.");
-        
+        assert!(
+            long_username_input.validate().is_err(),
+            "Validation should fail for long username."
+        );
+
         let invalid_char_username_input = RegisterRequest {
-            username: "user!".to_string(), 
+            username: "user!".to_string(),
             email: "test@example.com".to_string(),
             password: "ValidPassword123!".to_string(),
         };
-        assert!(invalid_char_username_input.validate().is_err(), "Validation should fail for username with invalid characters.");
+        assert!(
+            invalid_char_username_input.validate().is_err(),
+            "Validation should fail for username with invalid characters."
+        );
 
         let valid_input = RegisterRequest {
             username: "test_user_123".to_string(),
             email: "test@example.com".to_string(),
             password: "ValidPassword123!".to_string(),
         };
-        assert!(valid_input.validate().is_ok(), "Validation should pass for valid input: {:?}", valid_input.validate().err());
+        assert!(
+            valid_input.validate().is_ok(),
+            "Validation should pass for valid input: {:?}",
+            valid_input.validate().err()
+        );
     }
 
     #[test]
-    fn test_login_request_validation() { /* ... as refactored ... */ 
+    fn test_login_request_validation() {
+        /* ... as refactored ... */
         let invalid_email_input = LoginRequest {
             email: "invalid-email".to_string(),
             password: "ValidPassword123!".to_string(),
         };
-        assert!(invalid_email_input.validate().is_err(), "Validation should fail for invalid email format.");
+        assert!(
+            invalid_email_input.validate().is_err(),
+            "Validation should fail for invalid email format."
+        );
 
         let short_password_input = LoginRequest {
             email: "test@example.com".to_string(),
-            password: "short".to_string(), 
+            password: "short".to_string(),
         };
-        assert!(short_password_input.validate().is_err(), "Validation should fail for short password.");
+        assert!(
+            short_password_input.validate().is_err(),
+            "Validation should fail for short password."
+        );
 
         let empty_password_input = LoginRequest {
             email: "test@example.com".to_string(),
-            password: "".to_string(), 
+            password: "".to_string(),
         };
-        assert!(empty_password_input.validate().is_err(), "Validation should fail for empty password if min_length > 0.");
+        assert!(
+            empty_password_input.validate().is_err(),
+            "Validation should fail for empty password if min_length > 0."
+        );
 
         let valid_input = LoginRequest {
             email: "test@example.com".to_string(),
             password: "ValidPassword123!".to_string(),
         };
-        assert!(valid_input.validate().is_ok(), "Validation should pass for valid input.");
+        assert!(
+            valid_input.validate().is_ok(),
+            "Validation should pass for valid input."
+        );
     }
 }
