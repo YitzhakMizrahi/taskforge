@@ -1,23 +1,26 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder, HttpRequest};
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, PgPool};
-use validator::Validate;
-use uuid::Uuid;
+use crate::auth::{
+    generate_token, get_user_id, hash_password, verify_password, AuthMiddleware, AuthResponse,
+    LoginRequest, RegisterRequest,
+};
 use actix_cors::Cors;
 use actix_files::Files;
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use chrono::{DateTime, Utc};
+use log::{error, info};
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, PgPool};
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
-use std::collections::HashMap;
 use std::sync::Mutex;
-use log::{info, error};
-use crate::auth::{AuthMiddleware, get_user_id, LoginRequest, RegisterRequest, AuthResponse, hash_password, verify_password, generate_token};
+use uuid::Uuid;
+use validator::Validate;
 
+mod auth;
 mod security;
 mod tasks;
-mod auth;
 
-use security::{UserInput, sanitize_input, validate_sql_input};
+use security::{sanitize_input, validate_sql_input, UserInput};
 use tasks::{Task, TaskInput, TaskQuery};
 
 #[derive(Debug, Clone)]
@@ -135,7 +138,7 @@ async fn create_task(
     req: HttpRequest,
 ) -> impl Responder {
     let user_id = get_user_id(&req);
-    
+
     // Validate task input
     if let Err(e) = task_data.validate() {
         return HttpResponse::BadRequest().json(serde_json::json!({
@@ -171,10 +174,7 @@ async fn create_task(
     }
 }
 
-async fn get_tasks(
-    pool: web::Data<PgPool>,
-    query: web::Query<TaskQuery>,
-) -> impl Responder {
+async fn get_tasks(pool: web::Data<PgPool>, query: web::Query<TaskQuery>) -> impl Responder {
     // Build the query dynamically based on filters
     let mut sql = String::from(
         "SELECT id, title, description, priority, status, due_date, created_at, updated_at, created_by, assigned_to 
@@ -216,8 +216,7 @@ async fn get_tasks(
         let sanitized_search = sanitize_input(search);
         sql.push_str(&format!(
             " AND (title ILIKE ${} OR description ILIKE ${})",
-            param_count,
-            param_count
+            param_count, param_count
         ));
         params.push(format!("%{}%", sanitized_search));
         param_count += 1;
@@ -242,10 +241,7 @@ async fn get_tasks(
     }
 }
 
-async fn get_task(
-    pool: web::Data<PgPool>,
-    task_id: web::Path<Uuid>,
-) -> impl Responder {
+async fn get_task(pool: web::Data<PgPool>, task_id: web::Path<Uuid>) -> impl Responder {
     let result = sqlx::query_as::<_, Task>(
         "SELECT id, title, description, priority, status, due_date, created_at, updated_at, created_by, assigned_to 
          FROM tasks WHERE id = $1"
@@ -306,16 +302,10 @@ async fn update_task(
     }
 }
 
-async fn delete_task(
-    pool: web::Data<PgPool>,
-    task_id: web::Path<Uuid>,
-) -> impl Responder {
-    let result = sqlx::query!(
-        "DELETE FROM tasks WHERE id = $1",
-        task_id.into_inner()
-    )
-    .execute(pool.get_ref())
-    .await;
+async fn delete_task(pool: web::Data<PgPool>, task_id: web::Path<Uuid>) -> impl Responder {
+    let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", task_id.into_inner())
+        .execute(pool.get_ref())
+        .await;
 
     match result {
         Ok(_) => HttpResponse::NoContent().finish(),
@@ -326,10 +316,7 @@ async fn delete_task(
     }
 }
 
-async fn login(
-    pool: web::Data<PgPool>,
-    login_data: web::Json<LoginRequest>,
-) -> impl Responder {
+async fn login(pool: web::Data<PgPool>, login_data: web::Json<LoginRequest>) -> impl Responder {
     match sqlx::query!(
         "SELECT id, password_hash FROM users WHERE email = $1",
         login_data.email
@@ -405,17 +392,15 @@ async fn register(
     .fetch_one(&**pool)
     .await
     {
-        Ok(user) => {
-            match generate_token(user.id) {
-                Ok(token) => HttpResponse::Created().json(AuthResponse {
-                    token,
-                    user_id: user.id,
-                }),
-                Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": "Failed to generate token"
-                })),
-            }
-        }
+        Ok(user) => match generate_token(user.id) {
+            Ok(token) => HttpResponse::Created().json(AuthResponse {
+                token,
+                user_id: user.id,
+            }),
+            Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to generate token"
+            })),
+        },
         Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
             "error": "Failed to create user"
         })),
@@ -465,14 +450,8 @@ async fn main() -> std::io::Result<()> {
                     )
                     .service(
                         web::scope("/auth")
-                            .service(
-                                web::resource("/login")
-                                    .route(web::post().to(login))
-                            )
-                            .service(
-                                web::resource("/register")
-                                    .route(web::post().to(register))
-                            )
+                            .service(web::resource("/login").route(web::post().to(login)))
+                            .service(web::resource("/register").route(web::post().to(register))),
                     ),
             )
             .service(Files::new("/", "./static").index_file("index.html"))

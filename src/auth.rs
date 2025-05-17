@@ -1,23 +1,27 @@
 use actix_web::{
+    body::BoxBody,
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-    Error, HttpMessage, http::header, HttpResponse, body::BoxBody,
+    http::header,
+    Error, HttpMessage, HttpResponse,
 };
+use bcrypt::{hash, verify, DEFAULT_COST};
 use futures::future::{ready, LocalBoxFuture, Ready};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, errors::Error as JwtError};
+use jsonwebtoken::{
+    decode, encode, errors::Error as JwtError, DecodingKey, EncodingKey, Header, Validation,
+};
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::{SystemTime, UNIX_EPOCH};
-use bcrypt::{hash, verify, DEFAULT_COST};
-use std::env;
 
 const JWT_EXPIRATION: u64 = 60 * 60 * 24; // 24 hours
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: i32,  // user id
-    pub exp: u64,  // expiration time
-    pub iat: u64,  // issued at
+    pub sub: i32, // user id
+    pub exp: u64, // expiration time
+    pub iat: u64, // issued at
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,17 +106,13 @@ where
                             Ok(res)
                         })
                     }
-                    Err(_) => {
-                        Box::pin(async move {
-                            Err(actix_web::error::ErrorUnauthorized("Invalid token"))
-                        })
-                    }
+                    Err(_) => Box::pin(async move {
+                        Err(actix_web::error::ErrorUnauthorized("Invalid token"))
+                    }),
                 }
             }
             None => {
-                Box::pin(async move {
-                    Err(actix_web::error::ErrorUnauthorized("Missing token"))
-                })
+                Box::pin(async move { Err(actix_web::error::ErrorUnauthorized("Missing token")) })
             }
         }
     }
@@ -185,4 +185,4 @@ mod tests {
         assert!(verify_password(password, &hash).unwrap());
         assert!(!verify_password("wrong_password", &hash).unwrap());
     }
-} 
+}

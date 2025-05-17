@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use validator::Validate;
-use uuid::Uuid;
 use sqlx::FromRow;
+use uuid::Uuid;
+use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct TaskInput {
@@ -102,4 +102,4 @@ mod tests {
         };
         assert!(invalid_input.validate().is_err());
     }
-} 
+}
