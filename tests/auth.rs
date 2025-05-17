@@ -6,6 +6,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use taskforge::routes; // For routes::config
 use taskforge::routes::health; // For the health service // Added dotenv
+use taskforge::models::{TaskStatus, TaskPriority}; // Added imports for enums
 
 #[actix_rt::test]
 async fn test_register_and_login_flow() {
@@ -34,8 +35,12 @@ async fn test_register_and_login_flow() {
                     .max_age(3600),
             )
             .wrap(Logger::default()) // Ensure Logger is here
-            .service(health::health)
-            .service(web::scope("/api").configure(routes::config)),
+            .service(health::health) // health is outside /api and AuthMiddleware
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware) // Apply AuthMiddleware here
+                    .configure(routes::config)
+            ),
     )
     .await;
 
@@ -99,15 +104,59 @@ async fn test_register_and_login_flow() {
     );
 
     // Now, deserialize body_bytes_login for token check
-    let login_response: serde_json::Value =
+    let login_response: taskforge::auth::AuthResponse =
         serde_json::from_slice(&body_bytes_login).expect("Failed to parse login response JSON");
-    assert!(login_response.get("token").is_some_and(|t| t.is_string()));
-    assert!(
-        login_response
-            .get("token")
-            .and_then(|t| t.as_str())
-            .is_some_and(|s| !s.is_empty()),
-        "Token should be a non-empty string"
+
+    let token = login_response.token.clone(); // Clone token for use
+    let user_id_from_login = login_response.user_id;
+
+    assert!(!token.is_empty(), "Token should be a non-empty string");
+
+    // 3. Use the token to access a protected route (e.g., create a task)
+    let create_task_payload = json!({
+        "title": "Task created by token test",
+        "status": TaskStatus::Todo, // Using the enum variant
+        "priority": TaskPriority::Medium // Adding optional priority for thoroughness
+    });
+
+    let req_create_task = test::TestRequest::post()
+        .uri("/api/tasks")
+        .append_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(&create_task_payload)
+        .to_request();
+
+    let resp_create_task = test::call_service(&app, req_create_task).await;
+    let status_create_task = resp_create_task.status();
+    let body_bytes_create_task = test::read_body(resp_create_task).await;
+
+    assert_eq!(
+        status_create_task,
+        actix_web::http::StatusCode::CREATED,
+        "Create task with token failed. Expected 201, got {}. Body: {:?}",
+        status_create_task,
+        String::from_utf8_lossy(&body_bytes_create_task)
+    );
+
+    // Optionally, deserialize the created task and check its properties
+    let created_task_response: serde_json::Value = serde_json::from_slice(&body_bytes_create_task)
+        .expect("Failed to parse create task response JSON");
+    assert_eq!(
+        created_task_response.get("title").and_then(|t| t.as_str()),
+        Some("Task created by token test")
+    );
+    assert_eq!(
+        created_task_response.get("status").and_then(|s| s.as_str()),
+        Some("todo") // Assuming TaskStatus::Todo serializes to "todo"
+    );
+    assert_eq!(
+        created_task_response.get("priority").and_then(|p| p.as_str()),
+        Some("medium") // Assuming TaskPriority::Medium serializes to "medium"
+    );
+    assert_eq!(
+        created_task_response
+            .get("created_by")
+            .and_then(|cb| cb.as_i64()),
+        Some(user_id_from_login as i64)
     );
 
     // Clean up created user

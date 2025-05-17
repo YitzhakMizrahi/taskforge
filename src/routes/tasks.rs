@@ -15,60 +15,71 @@ use validator::Validate;
 #[allow(unused_assignments)]
 pub async fn get_tasks(
     pool: web::Data<PgPool>,
-    query: web::Query<TaskQuery>,
+    query_params: web::Query<TaskQuery>,
 ) -> Result<impl Responder, AppError> {
-    // Build the query dynamically based on filters
     let mut sql = String::from(
         "SELECT id, title, description, priority, status, due_date, created_at, updated_at, created_by, assigned_to \
          FROM tasks WHERE 1=1"
     );
-    let mut params: Vec<String> = Vec::new();
-
     let mut param_count = 1;
 
-    if let Some(status) = &query.status {
-        sql.push_str(&format!(" AND status = ${}", param_count));
-        params.push(status.clone());
+    // Use a temporary vector to hold string representations for ILIKE, or other string-based conditions
+    // For direct enum/int binding, we'll bind them directly to the query object.
+    
+    let mut conditions: Vec<String> = Vec::new();
+    
+    if query_params.status.is_some() {
+        conditions.push(format!("status = ${}", param_count));
+        param_count += 1;
+    }
+    if query_params.priority.is_some() {
+        conditions.push(format!("priority = ${}", param_count));
+        param_count += 1;
+    }
+    if query_params.assigned_to.is_some() {
+        conditions.push(format!("assigned_to = ${}", param_count));
+        param_count += 1;
+    }
+    if query_params.created_by.is_some() {
+        conditions.push(format!("created_by = ${}", param_count));
+        param_count += 1;
+    }
+    if query_params.search.is_some() {
+        conditions.push(format!("(title ILIKE ${}", param_count));
+        param_count += 1;
+        // For the second part of ILIKE, it reuses the same search term but needs a new placeholder
+        conditions.last_mut().unwrap().push_str(&format!(" OR description ILIKE ${})", param_count));
         param_count += 1;
     }
 
-    if let Some(priority) = &query.priority {
-        sql.push_str(&format!(" AND priority = ${}", param_count));
-        params.push(priority.clone());
-        param_count += 1;
+    if !conditions.is_empty() {
+        sql.push_str(" AND ");
+        sql.push_str(&conditions.join(" AND "));
     }
-
-    if let Some(assigned_to) = query.assigned_to {
-        sql.push_str(&format!(" AND assigned_to = ${}", param_count));
-        params.push(assigned_to.to_string());
-        param_count += 1;
-    }
-
-    if let Some(created_by) = query.created_by {
-        sql.push_str(&format!(" AND created_by = ${}", param_count));
-        params.push(created_by.to_string());
-        param_count += 1;
-    }
-
-    if let Some(search) = &query.search {
-        let search_pattern = format!("%{}%", search);
-        sql.push_str(&format!(" AND (title ILIKE ${}", param_count));
-        params.push(search_pattern.clone());
-        param_count += 1;
-        sql.push_str(&format!(" OR description ILIKE ${})", param_count));
-        params.push(search_pattern);
-        param_count += 1;
-    }
-
+    
     sql.push_str(" ORDER BY created_at DESC");
 
-    // Execute the query with parameters
-    let mut query = sqlx::query_as::<_, Task>(&sql);
-    for param in params {
-        query = query.bind(param);
-    }
+    let mut query_builder = sqlx::query_as::<_, Task>(&sql);
 
-    let tasks = query.fetch_all(&**pool).await?;
+    if let Some(status) = &query_params.status {
+        query_builder = query_builder.bind(status);
+    }
+    if let Some(priority) = &query_params.priority {
+        query_builder = query_builder.bind(priority);
+    }
+    if let Some(assigned_to) = query_params.assigned_to {
+        query_builder = query_builder.bind(assigned_to);
+    }
+    if let Some(created_by) = query_params.created_by {
+        query_builder = query_builder.bind(created_by);
+    }
+    if let Some(search) = &query_params.search {
+        let search_pattern = format!("%{}%", search);
+        query_builder = query_builder.bind(search_pattern.clone()); // For title ILIKE
+        query_builder = query_builder.bind(search_pattern);         // For description ILIKE
+    }
+    
+    let tasks = query_builder.fetch_all(&**pool).await?;
 
     Ok(HttpResponse::Ok().json(tasks))
 }
@@ -184,6 +195,7 @@ pub async fn delete_task(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{TaskPriority, TaskStatus}; // Make sure enums are in scope
     use actix_web::test;
     use serde_json::json;
     use sqlx::PgPool;
@@ -200,23 +212,37 @@ mod tests {
 
         let app = test::init_service(
             actix_web::App::new()
-                .app_data(web::Data::new(pool))
+                .app_data(web::Data::new(pool.clone())) // Ensure pool is cloned if needed elsewhere or use app_data_factory
                 .service(create_task),
         )
         .await;
 
         // Test empty title
         let req = test::TestRequest::post()
-            .uri("/tasks")
+            .uri("/tasks") // Assuming create_task is mounted at /tasks (or some prefix)
             .set_json(json!({
-                "title": "",
+                "title": "", // Invalid: empty
                 "description": "Test Description",
-                "priority": "High",
-                "status": "Todo"
+                "priority": TaskPriority::High, // Using enum
+                "status": TaskStatus::Todo      // Using enum
             }))
             .to_request();
 
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_client_error());
+        assert!(resp.status().is_client_error()); // Expect 422 for validation error
+        
+        // Test title too long
+        let long_title = "a".repeat(201);
+        let req_long_title = test::TestRequest::post()
+            .uri("/tasks")
+            .set_json(json!({
+                "title": long_title,
+                "description": "Test Description",
+                "priority": TaskPriority::Medium,
+                "status": TaskStatus::InProgress
+            }))
+            .to_request();
+        let resp_long_title = test::call_service(&app, req_long_title).await;
+        assert!(resp_long_title.status().is_client_error()); // Expect 422 for validation error
     }
 }

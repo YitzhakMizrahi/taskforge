@@ -4,6 +4,26 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use validator::Validate;
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "task_priority", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum TaskPriority {
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "task_status", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Todo,
+    InProgress,
+    Review,
+    Done,
+}
+
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct TaskInput {
     #[validate(length(min = 1, max = 200))]
@@ -12,13 +32,11 @@ pub struct TaskInput {
     #[validate(length(max = 1000))]
     pub description: Option<String>,
 
-    #[validate(length(max = 50))]
-    pub priority: Option<String>,
+    pub priority: Option<TaskPriority>,
 
     pub due_date: Option<DateTime<Utc>>,
 
-    #[validate(length(max = 50))]
-    pub status: String,
+    pub status: TaskStatus,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -26,8 +44,8 @@ pub struct Task {
     pub id: Uuid,
     pub title: String,
     pub description: Option<String>,
-    pub priority: Option<String>,
-    pub status: String,
+    pub priority: Option<TaskPriority>,
+    pub status: TaskStatus,
     pub due_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -37,8 +55,8 @@ pub struct Task {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TaskQuery {
-    pub status: Option<String>,
-    pub priority: Option<String>,
+    pub status: Option<TaskStatus>,
+    pub priority: Option<TaskPriority>,
     pub assigned_to: Option<i32>,
     pub created_by: Option<i32>,
     pub search: Option<String>,
@@ -71,8 +89,8 @@ mod tests {
         let input = TaskInput {
             title: "Test Task".to_string(),
             description: Some("Test Description".to_string()),
-            priority: Some("High".to_string()),
-            status: "Todo".to_string(),
+            priority: Some(TaskPriority::High),
+            status: TaskStatus::Todo,
             due_date: Some(Utc::now()),
         };
 
@@ -87,8 +105,8 @@ mod tests {
         let valid_input = TaskInput {
             title: "Valid Task".to_string(),
             description: Some("Valid Description".to_string()),
-            priority: Some("High".to_string()),
-            status: "Todo".to_string(),
+            priority: Some(TaskPriority::High),
+            status: TaskStatus::Todo,
             due_date: Some(Utc::now()),
         };
         assert!(valid_input.validate().is_ok());
@@ -96,8 +114,8 @@ mod tests {
         let invalid_input = TaskInput {
             title: "".to_string(), // Empty title
             description: Some("Valid Description".to_string()),
-            priority: Some("High".to_string()),
-            status: "Todo".to_string(),
+            priority: Some(TaskPriority::High),
+            status: TaskStatus::Todo,
             due_date: Some(Utc::now()),
         };
         assert!(invalid_input.validate().is_err());

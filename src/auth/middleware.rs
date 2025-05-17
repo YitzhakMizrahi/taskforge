@@ -50,8 +50,7 @@ where
         {
             let fut = self.service.call(req);
             return Box::pin(async move {
-                let res = fut.await?;
-                Ok(res)
+                fut.await
             });
         }
 
@@ -63,22 +62,22 @@ where
 
         match auth_header {
             Some(token) => {
-                match verify_token(token) {
+                match verify_token(token) { // verify_token returns Result<Claims, AppError>
                     Ok(claims) => {
                         req.extensions_mut().insert(claims);
                         let fut = self.service.call(req);
                         Box::pin(async move {
-                            let res = fut.await?;
-                            Ok(res)
+                            fut.await
                         })
                     }
-                    Err(_) => Box::pin(async move {
-                        Err(actix_web::error::ErrorUnauthorized("Invalid token"))
-                    }),
+                    Err(app_err) => { // app_err is AppError
+                        Box::pin(async move { Err(app_err.into()) }) // Convert AppError to actix_web::Error
+                    }
                 }
             }
             None => {
-                Box::pin(async move { Err(actix_web::error::ErrorUnauthorized("Missing token")) })
+                let app_err = crate::error::AppError::Unauthorized("Missing token".into());
+                Box::pin(async move { Err(app_err.into()) }) // Convert AppError to actix_web::Error
             }
         }
     }

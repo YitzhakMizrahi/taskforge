@@ -43,7 +43,8 @@ pub struct RegisterRequest {
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
+/// Response containing the JWT token and user ID
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponse {
     pub token: String,
     pub user_id: i32,
