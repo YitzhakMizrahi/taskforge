@@ -4,7 +4,7 @@ use actix_web::{
 };
 use futures::future::{ready, LocalBoxFuture, Ready};
 
-use crate::auth::token::verify_token; // Removed Claims import
+use crate::auth::token::verify_token;
 
 pub struct AuthMiddleware;
 

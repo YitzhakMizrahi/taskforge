@@ -1,12 +1,14 @@
 use actix_cors::Cors;
 use actix_web::middleware::Logger;
-use actix_web::{http::header, test, web, App};
+use actix_web::{http::header, rt, test, web, App, HttpServer};
 use dotenv::dotenv;
 use serde_json::json;
 use sqlx::PgPool;
+use std::net::TcpListener;
 use taskforge::models::{Task, TaskPriority, TaskStatus};
 use taskforge::routes;
 use taskforge::routes::health;
+// reqwest client will be used in the test_create_task_unauthorized
 
 // Helper struct to hold auth details
 struct TestUser {
@@ -61,13 +63,6 @@ async fn cleanup_user(pool: &PgPool, email: &str) {
         .await;
 }
 
-#[ignore]
-// Ignoring this test due to difficulties with testing middleware error responses
-// TODO: Revisit test_create_task_unauthorized.
-// Current actix-web test utilities (init_service + send_request/call_service)
-// exhibit unexpected panics when trying to assert a 401 status
-// from AuthMiddleware returning an AppError. The TestServer approach with actix_web::test::start
-// currently faces compilation issues (function not found).
 #[actix_rt::test]
 async fn test_create_task_unauthorized() {
     dotenv().ok();
@@ -76,42 +71,61 @@ async fn test_create_task_unauthorized() {
         .await
         .expect("Failed to connect to test DB");
 
-    // Revert to a version that compiles but would panic at runtime (suitable for #[ignore])
-    let app_service = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .wrap(
-                Cors::default()
-                    .allow_any_origin()
-                    .allow_any_method()
-                    .allow_any_header()
-                    .max_age(3600),
-            )
-            .wrap(Logger::default()) // Ensure Logger is here for compilable code
-            .service(health::health)
-            .service(
-                web::scope("/api")
-                    .wrap(taskforge::auth::AuthMiddleware)
-                    .configure(routes::config),
-            ),
-    )
-    .await;
+    // Find an available port
+    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
+    let port = listener.local_addr().unwrap().port();
+    drop(listener); // Drop the listener so the server can bind to it
 
+    let server_pool = pool.clone();
+    let server_handle = rt::spawn(async move {
+        HttpServer::new(move || {
+            App::new()
+                .app_data(web::Data::new(server_pool.clone()))
+                .wrap(Cors::default().allow_any_origin().allow_any_method().allow_any_header().max_age(3600))
+                .wrap(Logger::default())
+                .service(health::health)
+                .service(
+                    web::scope("/api")
+                        .wrap(taskforge::auth::AuthMiddleware)
+                        .configure(routes::config),
+                )
+        })
+        .bind(("127.0.0.1", port))
+        .unwrap_or_else(|_| panic!("Failed to bind to port {}", port))
+        .run()
+        .await
+    });
+
+    // Give the server a moment to start
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+    let client = reqwest::Client::new();
     let task_payload = json!({
         "title": "Unauthorized Task",
         "status": TaskStatus::Todo
     });
 
-    let http_req_builder = test::TestRequest::post()
-        .uri("/api/tasks")
-        .set_json(&task_payload);
+    let request_url = format!("http://127.0.0.1:{}/api/tasks", port);
 
-    // This is the line that would panic, but the code compiles.
-    let resp = http_req_builder.send_request(&app_service).await;
+    let resp = client
+        .post(&request_url)
+        .json(&task_payload)
+        .send()
+        .await
+        .expect("Failed to send request");
 
-    // This assertion would be checked if the above didn't panic.
-    // For an ignored test, we just need this to compile.
-    assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED,
+                 "Expected 401 Unauthorized, got {}. Body: {:?}",
+                 resp.status(), resp.text().await.unwrap_or_else(|_| "<failed to read body>".to_string()));
+
+    // Stop the server by aborting the spawned task
+    // Note: server_handle.abort() does not immediately guarantee the server stops listening.
+    // For more graceful shutdown, you'd typically use Server::stop() via a handle, 
+    // but that's more complex for this test scenario.
+    // Aborting is generally fine for tests if a bit abrupt.
+    server_handle.abort();
+    // Optionally, wait for the server to fully shut down, though not strictly necessary for this test
+    // let _ = server_handle.await;
 }
 
 #[actix_rt::test]
