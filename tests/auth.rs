@@ -156,8 +156,8 @@ async fn test_register_and_login_flow() {
     );
     assert_eq!(
         created_task_response
-            .get("created_by")
-            .and_then(|cb| cb.as_i64()),
+            .get("user_id")
+            .and_then(|uid| uid.as_i64()),
         Some(user_id_from_login as i64)
     );
 

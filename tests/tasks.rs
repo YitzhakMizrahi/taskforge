@@ -175,7 +175,7 @@ async fn test_task_crud_flow() {
         Some("Initial description")
     );
     assert_eq!(created_task.priority, Some(TaskPriority::Medium));
-    assert_eq!(created_task.created_by, test_user.id);
+    assert_eq!(created_task.user_id, test_user.id);
     let task_id_1 = created_task.id;
 
     // 2. Get Task by ID

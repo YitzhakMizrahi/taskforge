@@ -16,15 +16,15 @@ use validator::Validate;
 pub async fn get_tasks(
     pool: web::Data<PgPool>,
     query_params: web::Query<TaskQuery>,
+    req: HttpRequest,
 ) -> Result<impl Responder, AppError> {
-    let mut sql = String::from(
-        "SELECT id, title, description, priority, status, due_date, created_at, updated_at, created_by, assigned_to \
-         FROM tasks WHERE 1=1"
-    );
-    let mut param_count = 1;
+    let authenticated_user_id = get_user_id(&req)?;
 
-    // Use a temporary vector to hold string representations for ILIKE, or other string-based conditions
-    // For direct enum/int binding, we'll bind them directly to the query object.
+    let mut sql = String::from(
+        "SELECT id, title, description, priority, status, due_date, created_at, updated_at, user_id, assigned_to \
+         FROM tasks WHERE user_id = $1"
+    );
+    let mut param_count = 2;
 
     let mut conditions: Vec<String> = Vec::new();
 
@@ -40,14 +40,9 @@ pub async fn get_tasks(
         conditions.push(format!("assigned_to = ${}", param_count));
         param_count += 1;
     }
-    if query_params.created_by.is_some() {
-        conditions.push(format!("created_by = ${}", param_count));
-        param_count += 1;
-    }
     if query_params.search.is_some() {
         conditions.push(format!("(title ILIKE ${}", param_count));
         param_count += 1;
-        // For the second part of ILIKE, it reuses the same search term but needs a new placeholder
         conditions
             .last_mut()
             .unwrap()
@@ -64,6 +59,8 @@ pub async fn get_tasks(
 
     let mut query_builder = sqlx::query_as::<_, Task>(&sql);
 
+    query_builder = query_builder.bind(authenticated_user_id);
+
     if let Some(status) = &query_params.status {
         query_builder = query_builder.bind(status);
     }
@@ -73,13 +70,10 @@ pub async fn get_tasks(
     if let Some(assigned_to) = query_params.assigned_to {
         query_builder = query_builder.bind(assigned_to);
     }
-    if let Some(created_by) = query_params.created_by {
-        query_builder = query_builder.bind(created_by);
-    }
     if let Some(search) = &query_params.search {
         let search_pattern = format!("%{}%", search);
-        query_builder = query_builder.bind(search_pattern.clone()); // For title ILIKE
-        query_builder = query_builder.bind(search_pattern); // For description ILIKE
+        query_builder = query_builder.bind(search_pattern.clone());
+        query_builder = query_builder.bind(search_pattern);
     }
 
     let tasks = query_builder.fetch_all(&**pool).await?;
@@ -104,9 +98,9 @@ pub async fn create_task(
 
     // Insert task
     let result = sqlx::query_as::<_, Task>(
-        "INSERT INTO tasks (id, title, description, priority, status, due_date, created_by)
+        "INSERT INTO tasks (id, title, description, priority, status, due_date, user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, title, description, priority, status, due_date, created_at, updated_at, created_by, assigned_to"
+         RETURNING id, title, description, priority, status, due_date, created_at, updated_at, user_id, assigned_to"
     )
     .bind(task.id)
     .bind(task.title)
@@ -114,7 +108,7 @@ pub async fn create_task(
     .bind(task.priority)
     .bind(task.status)
     .bind(task.due_date)
-    .bind(task.created_by)
+    .bind(task.user_id)
     .fetch_one(&**pool)
     .await?;
 
@@ -128,17 +122,27 @@ pub async fn create_task(
 pub async fn get_task(
     pool: web::Data<PgPool>,
     task_id: web::Path<Uuid>,
+    req: HttpRequest,
 ) -> Result<impl Responder, AppError> {
+    let authenticated_user_id = get_user_id(&req)?;
+    let task_uuid = task_id.into_inner();
+
     let task = sqlx::query_as::<_, Task>(
-        "SELECT id, title, description, priority, status, due_date, created_at, updated_at, created_by, assigned_to 
+        "SELECT id, title, description, priority, status, due_date, created_at, updated_at, user_id, assigned_to 
          FROM tasks WHERE id = $1"
     )
-    .bind(task_id.into_inner())
+    .bind(task_uuid)
     .fetch_optional(&**pool)
     .await?;
 
     match task {
-        Some(task) => Ok(HttpResponse::Ok().json(task)),
+        Some(task) => {
+            if task.user_id != authenticated_user_id {
+                Err(AppError::NotFound("Task not found".into()))
+            } else {
+                Ok(HttpResponse::Ok().json(task))
+            }
+        }
         None => Err(AppError::NotFound("Task not found".into())),
     }
 }
@@ -151,29 +155,47 @@ pub async fn update_task(
     pool: web::Data<PgPool>,
     task_id: web::Path<Uuid>,
     task_data: web::Json<TaskInput>,
+    req: HttpRequest,
 ) -> Result<impl Responder, AppError> {
-    // Validate input
     task_data.validate()?;
+    let authenticated_user_id = get_user_id(&req)?;
+    let task_uuid = task_id.into_inner();
 
+    // First, verify ownership
+    let ownership_check = sqlx::query_as::<_, (i32,)>("SELECT user_id FROM tasks WHERE id = $1")
+        .bind(task_uuid)
+        .fetch_optional(&**pool)
+        .await?;
+
+    match ownership_check {
+        Some((owner_user_id,)) => {
+            if owner_user_id != authenticated_user_id {
+                return Err(AppError::NotFound(
+                    "Task not found or not owned by user".into(),
+                ));
+            }
+        }
+        None => return Err(AppError::NotFound("Task not found".into())),
+    }
+
+    // If ownership is verified, proceed with update
     let result = sqlx::query_as::<_, Task>(
         "UPDATE tasks 
          SET title = $1, description = $2, priority = $3, status = $4, due_date = $5
-         WHERE id = $6
-         RETURNING id, title, description, priority, status, due_date, created_at, updated_at, created_by, assigned_to"
+         WHERE id = $6 AND user_id = $7
+         RETURNING id, title, description, priority, status, due_date, created_at, updated_at, user_id, assigned_to"
     )
     .bind(&task_data.title)
     .bind(&task_data.description)
     .bind(&task_data.priority)
     .bind(&task_data.status)
     .bind(task_data.due_date)
-    .bind(task_id.into_inner())
-    .fetch_optional(&**pool)
+    .bind(task_uuid)
+    .bind(authenticated_user_id)
+    .fetch_one(&**pool)
     .await?;
 
-    match result {
-        Some(task) => Ok(HttpResponse::Ok().json(task)),
-        None => Err(AppError::NotFound("Task not found".into())),
-    }
+    Ok(HttpResponse::Ok().json(result))
 }
 
 /// Delete a task
@@ -183,13 +205,23 @@ pub async fn update_task(
 pub async fn delete_task(
     pool: web::Data<PgPool>,
     task_id: web::Path<Uuid>,
+    req: HttpRequest,
 ) -> Result<impl Responder, AppError> {
-    let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", task_id.into_inner())
-        .execute(&**pool)
-        .await?;
+    let authenticated_user_id = get_user_id(&req)?;
+    let task_uuid = task_id.into_inner();
+
+    let result = sqlx::query!(
+        "DELETE FROM tasks WHERE id = $1 AND user_id = $2",
+        task_uuid,
+        authenticated_user_id
+    )
+    .execute(&**pool)
+    .await?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::NotFound("Task not found".into()));
+        return Err(AppError::NotFound(
+            "Task not found or not owned by user".into(),
+        ));
     }
 
     Ok(HttpResponse::NoContent().finish())

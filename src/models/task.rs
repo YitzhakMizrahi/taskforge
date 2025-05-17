@@ -49,7 +49,7 @@ pub struct Task {
     pub due_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub created_by: i32,
+    pub user_id: i32,
     pub assigned_to: Option<i32>,
 }
 
@@ -58,12 +58,12 @@ pub struct TaskQuery {
     pub status: Option<TaskStatus>,
     pub priority: Option<TaskPriority>,
     pub assigned_to: Option<i32>,
-    pub created_by: Option<i32>,
+    pub user_id: Option<i32>,
     pub search: Option<String>,
 }
 
 impl Task {
-    pub fn new(input: TaskInput, user_id: i32) -> Self {
+    pub fn new(input: TaskInput, user_id_param: i32) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -74,7 +74,7 @@ impl Task {
             due_date: input.due_date,
             created_at: now,
             updated_at: now,
-            created_by: user_id,
+            user_id: user_id_param,
             assigned_to: None,
         }
     }
@@ -96,7 +96,7 @@ mod tests {
 
         let task = Task::new(input, 1);
         assert_eq!(task.title, "Test Task");
-        assert_eq!(task.created_by, 1);
+        assert_eq!(task.user_id, 1);
         assert!(task.assigned_to.is_none());
     }
 
