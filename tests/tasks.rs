@@ -284,3 +284,144 @@ async fn test_task_crud_flow() {
 
     cleanup_user(&pool, user_email).await;
 }
+
+#[actix_rt::test]
+async fn test_task_ownership_and_authorization() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header()
+                    .max_age(3600),
+            )
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware)
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+
+    let user_a_email = "owner_user_a@example.com";
+    let user_a_username = "owner_user_a";
+    let user_a_password = "PasswordOwnerA123!";
+
+    let user_b_email = "other_user_b@example.com";
+    let user_b_username = "other_user_b";
+    let user_b_password = "PasswordOtherB123!";
+
+    // Cleanup potential old users first
+    cleanup_user(&pool, user_a_email).await;
+    cleanup_user(&pool, user_b_email).await;
+
+    // Register and login User A
+    let user_a = register_and_login_user(&app, user_a_email, user_a_username, user_a_password)
+        .await
+        .expect("Failed to register/login User A");
+
+    // Register and login User B
+    let user_b = register_and_login_user(&app, user_b_email, user_b_username, user_b_password)
+        .await
+        .expect("Failed to register/login User B");
+
+    // User A creates a task
+    let task_payload_user_a = json!({
+        "title": "User A\'s Task",
+        "status": TaskStatus::Todo,
+        "priority": TaskPriority::High
+    });
+    let req_create_task_a = test::TestRequest::post()
+        .uri("/api/tasks")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", user_a.token)))
+        .set_json(&task_payload_user_a)
+        .to_request();
+    let resp_create_task_a = test::call_service(&app, req_create_task_a).await;
+    assert_eq!(
+        resp_create_task_a.status(),
+        actix_web::http::StatusCode::CREATED,
+        "User A failed to create task"
+    );
+    let task_a: Task = test::read_body_json(resp_create_task_a).await;
+    let task_a_id = task_a.id;
+
+    // 1. User B lists tasks: should not see User A's task
+    let req_list_tasks_b = test::TestRequest::get()
+        .uri("/api/tasks")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", user_b.token)))
+        .to_request();
+    let resp_list_tasks_b = test::call_service(&app, req_list_tasks_b).await;
+    assert_eq!(resp_list_tasks_b.status(), actix_web::http::StatusCode::OK);
+    let tasks_for_b: Vec<Task> = test::read_body_json(resp_list_tasks_b).await;
+    assert!(
+        !tasks_for_b.iter().any(|t| t.id == task_a_id),
+        "User B should not see User A\'s task in their list"
+    );
+
+    // 2. User B tries to get User A's task by ID: should get 404
+    let req_get_task_a_by_b = test::TestRequest::get()
+        .uri(&format!("/api/tasks/{}", task_a_id))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", user_b.token)))
+        .to_request();
+    let resp_get_task_a_by_b = test::call_service(&app, req_get_task_a_by_b).await;
+    assert_eq!(
+        resp_get_task_a_by_b.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "User B should get 404 when trying to fetch User A\'s task by ID"
+    );
+
+    // 3. User B tries to update User A's task: should get 404
+    let update_payload_by_b = json!({
+        "title": "Attempted Update by B",
+        "status": TaskStatus::InProgress
+    });
+    let req_update_task_a_by_b = test::TestRequest::put()
+        .uri(&format!("/api/tasks/{}", task_a_id))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", user_b.token)))
+        .set_json(&update_payload_by_b)
+        .to_request();
+    let resp_update_task_a_by_b = test::call_service(&app, req_update_task_a_by_b).await;
+    assert_eq!(
+        resp_update_task_a_by_b.status(),
+        actix_web::http::StatusCode::NOT_FOUND, // Or FORBIDDEN, but 404 is good for not leaking info
+        "User B should get 404 when trying to update User A\'s task"
+    );
+
+    // 4. User B tries to delete User A's task: should get 404
+    let req_delete_task_a_by_b = test::TestRequest::delete()
+        .uri(&format!("/api/tasks/{}", task_a_id))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", user_b.token)))
+        .to_request();
+    let resp_delete_task_a_by_b = test::call_service(&app, req_delete_task_a_by_b).await;
+    assert_eq!(
+        resp_delete_task_a_by_b.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "User B should get 404 when trying to delete User A\'s task"
+    );
+
+    // Verify User A can still fetch their own task (sanity check)
+    let req_get_task_a_by_a = test::TestRequest::get()
+        .uri(&format!("/api/tasks/{}", task_a_id))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", user_a.token)))
+        .to_request();
+    let resp_get_task_a_by_a = test::call_service(&app, req_get_task_a_by_a).await;
+    assert_eq!(
+        resp_get_task_a_by_a.status(),
+        actix_web::http::StatusCode::OK,
+        "User A should be able to fetch their own task"
+    );
+
+    // Cleanup
+    cleanup_user(&pool, user_a_email).await;
+    cleanup_user(&pool, user_b_email).await;
+}
