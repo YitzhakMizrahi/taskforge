@@ -81,7 +81,13 @@ async fn test_create_task_unauthorized() {
         HttpServer::new(move || {
             App::new()
                 .app_data(web::Data::new(server_pool.clone()))
-                .wrap(Cors::default().allow_any_origin().allow_any_method().allow_any_header().max_age(3600))
+                .wrap(
+                    Cors::default()
+                        .allow_any_origin()
+                        .allow_any_method()
+                        .allow_any_header()
+                        .max_age(3600),
+                )
                 .wrap(Logger::default())
                 .service(health::health)
                 .service(
@@ -114,13 +120,19 @@ async fn test_create_task_unauthorized() {
         .await
         .expect("Failed to send request");
 
-    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED,
-                 "Expected 401 Unauthorized, got {}. Body: {:?}",
-                 resp.status(), resp.text().await.unwrap_or_else(|_| "<failed to read body>".to_string()));
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::UNAUTHORIZED,
+        "Expected 401 Unauthorized, got {}. Body: {:?}",
+        resp.status(),
+        resp.text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string())
+    );
 
     // Stop the server by aborting the spawned task
     // Note: server_handle.abort() does not immediately guarantee the server stops listening.
-    // For more graceful shutdown, you'd typically use Server::stop() via a handle, 
+    // For more graceful shutdown, you'd typically use Server::stop() via a handle,
     // but that's more complex for this test scenario.
     // Aborting is generally fine for tests if a bit abrupt.
     server_handle.abort();
