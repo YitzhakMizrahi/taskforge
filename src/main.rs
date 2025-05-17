@@ -5,7 +5,7 @@ use sqlx::{FromRow, PgPool};
 use validator::Validate;
 
 mod security;
-use security::{UserInput, sanitize_input, validate_sql_input};
+use security::{sanitize_input, validate_sql_input, UserInput};
 
 async fn health() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
@@ -26,10 +26,7 @@ struct UserQuery {
     search: Option<String>,
 }
 
-async fn list_users(
-    pool: web::Data<PgPool>,
-    query: web::Query<UserQuery>,
-) -> impl Responder {
+async fn list_users(pool: web::Data<PgPool>, query: web::Query<UserQuery>) -> impl Responder {
     // Validate and sanitize search input if provided
     let search = if let Some(search) = &query.search {
         if let Err(_) = validate_sql_input(search) {
@@ -46,17 +43,15 @@ async fn list_users(
         sqlx::query_as::<_, User>(
             "SELECT id, username, email, created_at FROM users 
              WHERE username ILIKE $1 OR email ILIKE $1 
-             ORDER BY id"
+             ORDER BY id",
         )
         .bind(format!("%{}%", search))
         .fetch_all(pool.get_ref())
         .await
     } else {
-        sqlx::query_as::<_, User>(
-            "SELECT id, username, email, created_at FROM users ORDER BY id"
-        )
-        .fetch_all(pool.get_ref())
-        .await
+        sqlx::query_as::<_, User>("SELECT id, username, email, created_at FROM users ORDER BY id")
+            .fetch_all(pool.get_ref())
+            .await
     };
 
     match users {

@@ -1,6 +1,6 @@
-use validator::{Validate, ValidationError};
-use serde::{Deserialize, Serialize};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use validator::{Validate, ValidationError};
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct UserInput {
@@ -27,15 +27,15 @@ pub fn sanitize_input(input: &str) -> String {
         .replace("--", "")
         .replace("/*", "")
         .replace("*/", "");
-    
+
     sanitized.trim().to_string()
 }
 
 pub fn validate_sql_input(input: &str) -> Result<(), ValidationError> {
     // Check for common SQL injection patterns
     let sql_patterns = [
-        "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "UNION",
-        "ALTER", "EXEC", "EXECUTE", "DECLARE", "WAITFOR"
+        "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "UNION", "ALTER", "EXEC", "EXECUTE",
+        "DECLARE", "WAITFOR",
     ];
 
     for pattern in sql_patterns.iter() {
@@ -83,4 +83,4 @@ mod tests {
         };
         assert!(invalid_input.validate().is_err());
     }
-} 
+}
