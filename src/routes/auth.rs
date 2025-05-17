@@ -89,93 +89,87 @@ pub async fn login(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use actix_web::test;
-    use serde_json::json;
-    use sqlx::PgPool;
-    use std::env;
+    // Cleaned up imports for pure DTO validation tests
+    use crate::auth::{LoginRequest, RegisterRequest}; 
+    use validator::Validate;
+    // No longer needed: 
+    // use super::*;
+    // use actix_web::test;
+    // use serde_json::json;
+    // use sqlx::PgPool;
+    // use std::env;
+    // use dotenv::dotenv; // dotenv::dotenv().ok(); was removed from test bodies
 
-    // TODO: Fix DB connection for these tests or move to integration tests.
-    #[ignore]
-    #[actix_rt::test]
-    async fn test_register_validation() {
-        dotenv::dotenv().ok();
-        let pool = PgPool::connect(&env::var("DATABASE_URL").expect("DATABASE_URL not set"))
-            .await
-            .unwrap();
+    #[test]
+    fn test_register_request_validation() { /* ... as refactored ... */ 
+        let invalid_email_input = RegisterRequest {
+            username: "testuser".to_string(),
+            email: "invalid-email".to_string(),
+            password: "ValidPassword123!".to_string(),
+        };
+        assert!(invalid_email_input.validate().is_err(), "Validation should fail for invalid email format.");
 
-        let app = test::init_service(
-            actix_web::App::new()
-                .app_data(web::Data::new(pool))
-                .service(register),
-        )
-        .await;
+        let short_password_input = RegisterRequest {
+            username: "testuser".to_string(),
+            email: "test@example.com".to_string(),
+            password: "short".to_string(), 
+        };
+        assert!(short_password_input.validate().is_err(), "Validation should fail for short password.");
 
-        // Test invalid email
-        let req = test::TestRequest::post()
-            .uri("/register")
-            .set_json(json!({
-                "username": "test",
-                "email": "invalid-email",
-                "password": "password123"
-            }))
-            .to_request();
+        let short_username_input = RegisterRequest {
+            username: "u".to_string(), 
+            email: "test@example.com".to_string(),
+            password: "ValidPassword123!".to_string(),
+        };
+        assert!(short_username_input.validate().is_err(), "Validation should fail for short username.");
 
-        let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_client_error());
+        let long_username = "a".repeat(33);
+        let long_username_input = RegisterRequest {
+            username: long_username,
+            email: "test@example.com".to_string(),
+            password: "ValidPassword123!".to_string(),
+        };
+        assert!(long_username_input.validate().is_err(), "Validation should fail for long username.");
+        
+        let invalid_char_username_input = RegisterRequest {
+            username: "user!".to_string(), 
+            email: "test@example.com".to_string(),
+            password: "ValidPassword123!".to_string(),
+        };
+        assert!(invalid_char_username_input.validate().is_err(), "Validation should fail for username with invalid characters.");
 
-        // Test short password
-        let req = test::TestRequest::post()
-            .uri("/register")
-            .set_json(json!({
-                "username": "test",
-                "email": "test@example.com",
-                "password": "short"
-            }))
-            .to_request();
-
-        let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_client_error());
+        let valid_input = RegisterRequest {
+            username: "test_user_123".to_string(),
+            email: "test@example.com".to_string(),
+            password: "ValidPassword123!".to_string(),
+        };
+        assert!(valid_input.validate().is_ok(), "Validation should pass for valid input: {:?}", valid_input.validate().err());
     }
 
-    // TODO: Fix DB connection for these tests or move to integration tests.
-    #[ignore]
-    #[actix_rt::test]
-    async fn test_login_validation() {
-        dotenv::dotenv().ok();
-        let pool = PgPool::connect(&env::var("DATABASE_URL").expect("DATABASE_URL not set"))
-            .await
-            .unwrap();
+    #[test]
+    fn test_login_request_validation() { /* ... as refactored ... */ 
+        let invalid_email_input = LoginRequest {
+            email: "invalid-email".to_string(),
+            password: "ValidPassword123!".to_string(),
+        };
+        assert!(invalid_email_input.validate().is_err(), "Validation should fail for invalid email format.");
 
-        let app = test::init_service(
-            actix_web::App::new()
-                .app_data(web::Data::new(pool))
-                .service(login),
-        )
-        .await;
+        let short_password_input = LoginRequest {
+            email: "test@example.com".to_string(),
+            password: "short".to_string(), 
+        };
+        assert!(short_password_input.validate().is_err(), "Validation should fail for short password.");
 
-        // Test invalid email
-        let req = test::TestRequest::post()
-            .uri("/login")
-            .set_json(json!({
-                "email": "invalid-email",
-                "password": "password123"
-            }))
-            .to_request();
+        let empty_password_input = LoginRequest {
+            email: "test@example.com".to_string(),
+            password: "".to_string(), 
+        };
+        assert!(empty_password_input.validate().is_err(), "Validation should fail for empty password if min_length > 0.");
 
-        let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_client_error());
-
-        // Test short password
-        let req = test::TestRequest::post()
-            .uri("/login")
-            .set_json(json!({
-                "email": "test@example.com",
-                "password": "short"
-            }))
-            .to_request();
-
-        let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_client_error());
+        let valid_input = LoginRequest {
+            email: "test@example.com".to_string(),
+            password: "ValidPassword123!".to_string(),
+        };
+        assert!(valid_input.validate().is_ok(), "Validation should pass for valid input.");
     }
 }

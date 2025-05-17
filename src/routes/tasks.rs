@@ -197,55 +197,58 @@ pub async fn delete_task(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::models::{TaskPriority, TaskStatus}; // Make sure enums are in scope
-    use actix_web::test;
-    use serde_json::json;
-    use sqlx::PgPool;
-    use std::env;
+    use crate::models::{TaskInput, TaskStatus, TaskPriority}; 
+    use validator::Validate; // For .validate() method
 
-    // TODO: Fix DB connection for this test or move to integration tests.
-    #[ignore]
-    #[actix_rt::test]
-    async fn test_create_task_validation() {
-        dotenv::dotenv().ok();
-        let pool = PgPool::connect(&env::var("DATABASE_URL").expect("DATABASE_URL not set"))
-            .await
-            .unwrap();
-
-        let app = test::init_service(
-            actix_web::App::new()
-                .app_data(web::Data::new(pool.clone())) // Ensure pool is cloned if needed elsewhere or use app_data_factory
-                .service(create_task),
-        )
-        .await;
-
+    // No longer async, no actix_rt needed.
+    // Remove #[ignore] as it should now pass as a unit test.
+    #[test]
+    fn test_task_input_validation() { // Renamed for clarity
         // Test empty title
-        let req = test::TestRequest::post()
-            .uri("/tasks") // Assuming create_task is mounted at /tasks (or some prefix)
-            .set_json(json!({
-                "title": "", // Invalid: empty
-                "description": "Test Description",
-                "priority": TaskPriority::High, // Using enum
-                "status": TaskStatus::Todo      // Using enum
-            }))
-            .to_request();
+        let invalid_input_empty_title = TaskInput {
+            title: "".to_string(),
+            description: Some("Test Description".to_string()),
+            priority: Some(TaskPriority::High),
+            status: TaskStatus::Todo,
+            due_date: None, 
+        };
+        assert!(invalid_input_empty_title.validate().is_err(), "Validation should fail for empty title.");
 
-        let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_client_error()); // Expect 422 for validation error
-
-        // Test title too long
+        // Test title too long (max 200 according to TaskInput struct)
         let long_title = "a".repeat(201);
-        let req_long_title = test::TestRequest::post()
-            .uri("/tasks")
-            .set_json(json!({
-                "title": long_title,
-                "description": "Test Description",
-                "priority": TaskPriority::Medium,
-                "status": TaskStatus::InProgress
-            }))
-            .to_request();
-        let resp_long_title = test::call_service(&app, req_long_title).await;
-        assert!(resp_long_title.status().is_client_error()); // Expect 422 for validation error
+        let invalid_input_long_title = TaskInput {
+            title: long_title,
+            description: Some("Test Description".to_string()),
+            priority: Some(TaskPriority::Medium),
+            status: TaskStatus::InProgress,
+            due_date: None,
+        };
+        assert!(invalid_input_long_title.validate().is_err(), "Validation should fail for overly long title.");
+
+        // Test valid input
+        let valid_input = TaskInput {
+            title: "Valid Title".to_string(),
+            description: Some("Test Description".to_string()),
+            priority: Some(TaskPriority::Low),
+            status: TaskStatus::Done,
+            due_date: None,
+        };
+        assert!(valid_input.validate().is_ok(), "Validation should pass for valid input.");
+
+        // Test description too long (max 1000 according to TaskInput struct)
+        let long_description = "b".repeat(1001);
+        let invalid_input_long_desc = TaskInput {
+            title: "Valid title for desc test".to_string(),
+            description: Some(long_description),
+            priority: Some(TaskPriority::Low),
+            status: TaskStatus::Todo,
+            due_date: None,
+        };
+        assert!(invalid_input_long_desc.validate().is_err(), "Validation should fail for overly long description.");
+    
+        // Test for priority and status fields (they are enums, no length validation now, but presence might be tested if they weren't Option<Enum>)
+        // Since TaskInput.priority is Option<TaskPriority> and TaskInput.status is TaskStatus (not optional),
+        // their validation is mostly about type correctness and presence for status, which serde handles at deserialization.
+        // The `Validate` derive on TaskInput primarily handles the string length constraints on title and description.
     }
 }
