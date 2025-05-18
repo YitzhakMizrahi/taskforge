@@ -29,7 +29,7 @@ async fn register_and_login_user(
     // Register
     let req_register = test::TestRequest::post()
         .uri("/api/auth/register")
-        .set_json(&json!({
+        .set_json(json!({
             "username": username,
             "email": email,
             "password": password
