@@ -8,9 +8,26 @@ use actix_web::{post, web, HttpResponse, Responder};
 use sqlx::PgPool;
 use validator::Validate;
 
-/// Register a new user
+/// Registers a new user.
 ///
-/// Creates a new user account and returns an authentication token.
+/// This endpoint handles user registration. It expects a JSON payload with
+/// username, email, and password.
+///
+/// ## Steps:
+/// 1. Validates the input data (`RegisterRequest`).
+/// 2. Checks if a user with the given email already exists.
+/// 3. Hashes the provided password.
+/// 4. Inserts the new user into the database.
+/// 5. Generates a JWT authentication token for the new user.
+///
+/// ## Responses:
+/// - `201 Created`: On successful registration, returns an `AuthResponse`
+///   containing the JWT token and user ID.
+/// - `400 Bad Request`: If the email is already registered or for other
+///   general request issues.
+/// - `422 Unprocessable Entity`: If input validation fails (e.g., invalid email format,
+///   password too short).
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
 #[post("/register")]
 pub async fn register(
     pool: web::Data<PgPool>,
@@ -50,9 +67,23 @@ pub async fn register(
     }))
 }
 
-/// Login user
+/// Logs in an existing user.
 ///
-/// Authenticates a user and returns an authentication token.
+/// This endpoint handles user login. It expects a JSON payload with
+/// email and password.
+///
+/// ## Steps:
+/// 1. Validates the input data (`LoginRequest`).
+/// 2. Retrieves the user from the database based on the email.
+/// 3. Verifies the provided password against the stored hash.
+/// 4. If authentication is successful, generates a JWT authentication token.
+///
+/// ## Responses:
+/// - `200 OK`: On successful login, returns an `AuthResponse` containing
+///   the JWT token and user ID.
+/// - `401 Unauthorized`: If credentials (email or password) are invalid.
+/// - `422 Unprocessable Entity`: If input validation fails (e.g., invalid email format).
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
 #[post("/login")]
 pub async fn login(
     pool: web::Data<PgPool>,

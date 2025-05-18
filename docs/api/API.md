@@ -1,5 +1,7 @@
 # API Documentation
 
+> **Note:** This document describes the target API design, including features that may not yet be fully implemented. For the currently available endpoints, please refer to the main `README.md`.
+
 ## Overview
 This document details the REST API endpoints and WebSocket interfaces for the Task Manager.
 

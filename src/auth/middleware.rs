@@ -6,6 +6,14 @@ use futures::future::{ready, LocalBoxFuture, Ready};
 
 use crate::auth::token::verify_token;
 
+/// Authentication middleware factory.
+///
+/// This middleware is responsible for checking the `Authorization` header
+/// for a Bearer token and verifying it. If the token is valid, the claims
+/// are inserted into the request extensions for later use by handlers.
+///
+/// Certain paths like `/health`, `/api/auth/login`, and `/api/auth/register`
+/// are excluded from authentication checks.
 pub struct AuthMiddleware;
 
 impl<S, B> Transform<S, ServiceRequest> for AuthMiddleware
@@ -25,6 +33,10 @@ where
     }
 }
 
+/// Authentication middleware service.
+///
+/// This service is created by `AuthMiddleware` and performs the actual
+/// authentication logic for each request.
 pub struct AuthMiddlewareService<S> {
     service: S,
 }

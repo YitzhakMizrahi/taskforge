@@ -1,5 +1,7 @@
 # Development Environment Setup
 
+> **Note:** For a quick start, see the main `README.md`. This document provides more detailed setup instructions.
+
 ## Prerequisites
 - Rust (latest stable version)
 - PostgreSQL 14+
@@ -25,21 +27,24 @@ brew install postgresql
 
 ### 3. Database Setup
 ```bash
-# Create database
-createdb task_manager
+# Create database (if it doesn't exist)
+createdb taskforge
 
-# Run migrations
-sqlx database create
+# Ensure DATABASE_URL in .env points to this database
+# Then, run migrations:
 sqlx migrate run
+
+# Prepare SQLx query data (if not already done or if queries change):
+cargo sqlx prepare
 ```
 
 ### 4. Environment Configuration
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (refer to `README.md` for the latest recommended variables):
 ```env
-DATABASE_URL=postgres://postgres:postgres@localhost/task_manager
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=your-secret-key
-RUST_LOG=debug
+DATABASE_URL=postgres://your_user:your_password@localhost/taskforge
+# REDIS_URL=redis://localhost:6379 # Redis is optional and not yet integrated
+JWT_SECRET=your_very_strong_secret_key_here
+RUST_LOG=info,taskforge=debug # Example: info level for all, debug for taskforge crate
 ```
 
 ### 5. Build and Run
@@ -61,21 +66,24 @@ cargo watch -x run
 
 ### 1. Build Image
 ```bash
-docker build -t task-manager .
+docker build -t taskforge .
 ```
 
 ### 2. Run Container
 ```bash
-docker run -p 8080:8080 task-manager
+docker run -p 8080:8080 taskforge
 ```
 
 ## Development Tools
 
 ### Recommended VS Code Extensions
-- rust-analyzer
-- CodeLLDB
-- Better TOML
-- SQLx
+- `rust-analyzer` (Essential for Rust development)
+- `CodeLLDB` (For debugging)
+- `crates` (Helps manage dependencies in Cargo.toml)
+- `Even Better TOML` (Improved TOML file support)
+- `SQLx Linter` (Provides SQL linting if you write raw SQL in strings, complements `sqlx prepare`)
+- `EditorConfig for VS Code` (If using an .editorconfig file)
+- `GitLens` (Enhanced Git capabilities)
 
 ### Useful Commands
 ```bash
@@ -98,7 +106,7 @@ cargo update
 1. Database connection errors
    - Check PostgreSQL is running
    - Verify DATABASE_URL in .env
-   - Ensure database exists
+   - Ensure database `taskforge` exists
 
 2. Build errors
    - Run `cargo clean`
@@ -106,7 +114,7 @@ cargo update
    - Check Rust version
 
 3. Runtime errors
-   - Check logs
+   - Check logs (consider `RUST_LOG` setting in `.env`)
    - Verify environment variables
    - Check database migrations
 

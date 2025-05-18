@@ -1,5 +1,7 @@
 # TaskForge System Architecture
 
+> **Note:** This document outlines the target architecture for TaskForge, including components and services that may be planned for future development and not yet fully implemented.
+
 ## Overview
 This document outlines the high-level architecture of TaskForge, our real-time collaborative task management system.
 

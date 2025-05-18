@@ -4,22 +4,36 @@ use serde::{Deserialize, Serialize};
 // use sqlx::FromRow;
 use validator::Validate;
 
-#[derive(Debug, Serialize, Deserialize)] // Add FromRow if needed
+/// Represents a user entity as returned by the API (without sensitive information like password hash).
+#[derive(Debug, Serialize, Deserialize)] // Add FromRow if User model is fetched directly from DB
 pub struct User {
+    /// Unique identifier for the user.
     pub id: i32,
+    /// The username of the user.
     pub username: String,
+    /// The email address of the user.
     pub email: String,
+    /// Timestamp of when the user account was created.
     pub created_at: DateTime<Utc>,
 }
 
+/// Input structure for creating a new user (registration).
+/// Contains validation rules for its fields.
+/// The password field is for input only and is not stored directly.
 #[derive(Debug, Deserialize, Validate)]
 pub struct UserInput {
+    /// The username for the new user.
+    /// Must be between 3 and 50 characters.
     #[validate(length(min = 3, max = 50))]
     pub username: String,
+    /// The email address for the new user.
+    /// Must be a valid email format.
     #[validate(email)]
     pub email: String,
+    /// The password for the new user.
+    /// Must be at least 6 characters long.
     #[validate(length(min = 6))]
-    pub password: String, // This password field here is for input, it won't be stored directly in User model
+    pub password: String,
 }
 
 #[cfg(test)]

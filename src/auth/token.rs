@@ -2,12 +2,26 @@ use crate::error::AppError;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
+/// Represents the claims encoded within a JWT (JSON Web Token).
 #[derive(Debug, Serialize, Deserialize, Clone)] // Added Clone for potential use in middleware
 pub struct Claims {
+    /// Subject of the token, typically the user's unique identifier.
     pub sub: i32, // user id
+    /// Expiration timestamp (seconds since epoch) for the token.
     pub exp: usize,
 }
 
+/// Generates a JWT for a given user ID.
+///
+/// The token is set to expire in 24 hours.
+/// It requires the `JWT_SECRET` environment variable to be set for signing the token.
+///
+/// # Arguments
+/// * `user_id` - The ID of the user for whom the token is generated.
+///
+/// # Returns
+/// A `Result` containing the JWT string if successful, or an `AppError` if token generation fails
+/// (e.g., `JWT_SECRET` not set, encoding error).
 pub fn generate_token(user_id: i32) -> Result<String, AppError> {
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
@@ -30,6 +44,17 @@ pub fn generate_token(user_id: i32) -> Result<String, AppError> {
     .map_err(|e| AppError::InternalServerError(format!("Failed to generate token: {}", e)))
 }
 
+/// Verifies a JWT string and decodes its claims.
+///
+/// It requires the `JWT_SECRET` environment variable to be set for verifying the token signature.
+/// Default validation checks are applied (e.g., signature, expiration).
+///
+/// # Arguments
+/// * `token` - The JWT string to verify.
+///
+/// # Returns
+/// A `Result` containing the decoded `Claims` if the token is valid, or an `AppError` if verification fails
+/// (e.g., `JWT_SECRET` not set, invalid signature, expired token, malformed token).
 pub fn verify_token(token: &str) -> Result<Claims, AppError> {
     let secret = std::env::var("JWT_SECRET")
         .map_err(|_| AppError::InternalServerError("JWT_SECRET not set".into()))?;

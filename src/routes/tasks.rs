@@ -8,9 +8,23 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
 
-/// Get all tasks
+/// Retrieves a list of tasks for the authenticated user.
 ///
-/// Returns a list of tasks filtered by the provided query parameters.
+/// This endpoint fetches tasks owned by the authenticated user. It supports
+/// filtering by `status`, `priority`, `assigned_to` (user ID), and a `search` term
+/// which looks for matches in task titles and descriptions.
+/// Tasks are ordered by creation date in descending order.
+///
+/// ## Query Parameters:
+/// - `status` (optional): Filters tasks by their status (e.g., "todo", "inprogress", "done").
+/// - `priority` (optional): Filters tasks by their priority (e.g., "low", "medium", "high").
+/// - `assigned_to` (optional): Filters tasks by the ID of the user they are assigned to.
+/// - `search` (optional): A string to search for in task titles and descriptions (case-insensitive).
+///
+/// ## Responses:
+/// - `200 OK`: Returns a JSON array of `Task` objects.
+/// - `401 Unauthorized`: If the request lacks a valid authentication token.
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
 #[get("")]
 #[allow(unused_assignments)]
 pub async fn get_tasks(
@@ -81,9 +95,26 @@ pub async fn get_tasks(
     Ok(HttpResponse::Ok().json(tasks))
 }
 
-/// Create a new task
+/// Creates a new task for the authenticated user.
 ///
-/// Creates a new task and returns the created task.
+/// This endpoint allows an authenticated user to create a new task.
+/// It expects a JSON payload conforming to `TaskInput`.
+/// The `user_id` of the task is automatically set to the ID of the authenticated user.
+///
+/// ## Request Body:
+/// A JSON object matching the `TaskInput` struct, including:
+/// - `title`: The title of the task (required).
+/// - `description` (optional): A description of the task.
+/// - `priority` (optional): The priority of the task (e.g., "low", "medium", "high").
+/// - `status`: The status of the task (e.g., "todo", "inprogress", "done"). Defaults to "todo".
+/// - `due_date` (optional): The due date for the task.
+///
+/// ## Responses:
+/// - `201 Created`: Returns the newly created `Task` object as JSON.
+/// - `400 Bad Request`: If the input data is invalid (e.g., missing required fields in a way not caught by `validate`).
+/// - `401 Unauthorized`: If the request lacks a valid authentication token.
+/// - `422 Unprocessable Entity`: If input validation on `TaskInput` fails (e.g., title too short).
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
 #[post("")]
 pub async fn create_task(
     pool: web::Data<PgPool>,
@@ -115,9 +146,19 @@ pub async fn create_task(
     Ok(HttpResponse::Created().json(result))
 }
 
-/// Get a task by ID
+/// Retrieves a specific task by its ID.
 ///
-/// Returns a task by its ID.
+/// This endpoint fetches a single task by its UUID.
+/// The authenticated user must be the owner of the task.
+///
+/// ## Path Parameters:
+/// - `id`: The UUID of the task to retrieve.
+///
+/// ## Responses:
+/// - `200 OK`: Returns the `Task` object as JSON if found and owned by the user.
+/// - `401 Unauthorized`: If the request lacks a valid authentication token.
+/// - `404 Not Found`: If the task with the given ID does not exist or is not owned by the authenticated user.
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
 #[get("/{id}")]
 pub async fn get_task(
     pool: web::Data<PgPool>,
@@ -147,9 +188,25 @@ pub async fn get_task(
     }
 }
 
-/// Update a task
+/// Updates an existing task.
 ///
-/// Updates a task by its ID and returns the updated task.
+/// This endpoint allows an authenticated user to update a task they own.
+/// It expects a JSON payload conforming to `TaskInput` and the task's UUID in the path.
+/// Only the owner of the task can update it.
+///
+/// ## Path Parameters:
+/// - `id`: The UUID of the task to update.
+///
+/// ## Request Body:
+/// A JSON object matching the `TaskInput` struct, containing the fields to be updated.
+/// See `create_task` for details on `TaskInput` fields.
+///
+/// ## Responses:
+/// - `200 OK`: Returns the updated `Task` object as JSON.
+/// - `401 Unauthorized`: If the request lacks a valid authentication token.
+/// - `404 Not Found`: If the task with the given ID does not exist or is not owned by the authenticated user.
+/// - `422 Unprocessable Entity`: If input validation on `TaskInput` fails.
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
 #[put("/{id}")]
 pub async fn update_task(
     pool: web::Data<PgPool>,
@@ -198,9 +255,19 @@ pub async fn update_task(
     Ok(HttpResponse::Ok().json(result))
 }
 
-/// Delete a task
-///
 /// Deletes a task by its ID.
+///
+/// This endpoint allows an authenticated user to delete a task they own.
+/// Only the owner of the task can delete it.
+///
+/// ## Path Parameters:
+/// - `id`: The UUID of the task to delete.
+///
+/// ## Responses:
+/// - `204 No Content`: On successful deletion.
+/// - `401 Unauthorized`: If the request lacks a valid authentication token.
+/// - `404 Not Found`: If the task with the given ID does not exist or is not owned by the authenticated user.
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
 #[delete("/{id}")]
 pub async fn delete_task(
     pool: web::Data<PgPool>,

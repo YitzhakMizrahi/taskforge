@@ -2,9 +2,19 @@ use actix_web::{get, HttpResponse, Responder};
 use chrono::Utc;
 use serde_json::json;
 
-/// Health check endpoint
+/// Health check endpoint.
 ///
-/// Returns the current status of the API and timestamp.
+/// Provides a simple health check for the API. It returns a JSON response
+/// indicating the operational status and the current server timestamp.
+///
+/// ## Responses:
+/// - `200 OK`: Always returns a success status with a JSON body:
+///   ```json
+///   {
+///     "status": "ok",
+///     "timestamp": "2023-10-27T12:00:00.000000Z"
+///   }
+///   ```
 #[get("/health")]
 pub async fn health() -> impl Responder {
     HttpResponse::Ok().json(json!({

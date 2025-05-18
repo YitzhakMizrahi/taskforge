@@ -19,16 +19,24 @@ lazy_static! {
     static ref USERNAME_REGEX: regex::Regex = regex::Regex::new(r"^[a-zA-Z0-9_-]+$").unwrap();
 }
 
+/// Represents the payload for a user login request.
 #[derive(Debug, Deserialize, Validate)]
 pub struct LoginRequest {
+    /// User's email address.
+    /// Must be a valid email format.
     #[validate(email)]
     pub email: String,
+    /// User's password.
+    /// Must be at least 6 characters long.
     #[validate(length(min = 6))]
     pub password: String,
 }
 
+/// Represents the payload for a new user registration request.
 #[derive(Debug, Deserialize, Validate)]
 pub struct RegisterRequest {
+    /// Desired username for the new account.
+    /// Must be between 3 and 32 characters, alphanumeric, and can include underscores or hyphens.
     #[validate(
         length(min = 3, max = 32),
         regex(
@@ -37,27 +45,38 @@ pub struct RegisterRequest {
         )
     )]
     pub username: String,
+    /// Email address for the new account.
+    /// Must be a valid email format.
     #[validate(email)]
     pub email: String,
+    /// Password for the new account.
+    /// Must be at least 6 characters long.
     #[validate(length(min = 6))]
     pub password: String,
 }
 
-/// Response containing the JWT token and user ID
+/// Response structure after successful authentication (login or registration).
+/// Contains the JWT access token and the ID of the authenticated user.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponse {
+    /// The JWT (JSON Web Token) for session authentication.
     pub token: String,
+    /// The unique identifier of the authenticated user.
     pub user_id: i32,
 }
 
-/// Extracts user ID from request extensions.
+/// Extracts user ID from request extensions if a valid JWT was processed by `AuthMiddleware`.
+///
+/// The user ID is extracted from the `Claims` struct (specifically the `sub` field)
+/// which should have been inserted into request extensions by the `AuthMiddleware`.
 ///
 /// # Arguments
 /// * `req` - A reference to the `HttpRequest`.
 ///
 /// # Returns
 /// A `Result<i32, AppError>` containing the user ID if found,
-/// or an `AppError::Unauthorized` if not found.
+/// or an `AppError::Unauthorized` if claims are not found (e.g., missing or invalid token,
+/// or route not protected by `AuthMiddleware`).
 pub fn get_user_id(req: &HttpRequest) -> Result<i32, AppError> {
     req.extensions()
         .get::<Claims>()
