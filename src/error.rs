@@ -91,31 +91,31 @@ impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> AppError {
         match error {
             sqlx::Error::RowNotFound => AppError::NotFound("Record not found".into()),
-            sqlx::Error::Database(db_err) => {
-                // Check if the error is a PostgreSQL specific error
-                if let Some(pg_err) = db_err.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() {
-                    match pg_err.code() {
-                        "23505" => {
-                            // Unique violation
-                            if let Some(constraint_name) = pg_err.constraint() {
-                                if constraint_name.contains("username") {
-                                    // Assuming constraint name like 'users_username_key'
+            sqlx::Error::Database(db_err) => { // db_err is Box<dyn sqlx::error::DatabaseError + ...>
+                match db_err.code() { // db_err.code() is Option<Cow<'_, str>>
+                    Some(code_cow) => {
+                        let code_str = code_cow.as_ref(); // code_str is &str
+                        if code_str == "23505" { // Unique violation
+                            if let Some(constraint_cow) = db_err.constraint() { // constraint_cow is Cow<'_, str>
+                                let constraint_str: &str = constraint_cow.as_ref(); // constraint_str is &str
+                                if constraint_str.contains("username") {
                                     return AppError::BadRequest("Username already taken".into());
                                 }
-                                if constraint_name.contains("email") {
-                                    // Assuming constraint name like 'users_email_key'
+                                if constraint_str.contains("email") {
                                     return AppError::BadRequest("Email already registered".into());
                                 }
                             }
                             // Generic unique violation message if constraint name doesn't give more info
-                            AppError::BadRequest("A unique value constraint was violated".into())
+                            return AppError::BadRequest(
+                                "A unique value constraint was violated".into(),
+                            );
                         }
-                        // We can add more specific PostgreSQL error codes here if needed
-                        _ => AppError::DatabaseError(pg_err.to_string()),
+                        // Fallback for other DB error codes
+                        AppError::DatabaseError(db_err.to_string())
                     }
-                } else {
-                    // Not a PgDatabaseError, or downcast failed, return generic DB error
-                    AppError::DatabaseError(db_err.to_string())
+                    None => { // No error code available from the DatabaseError trait
+                        AppError::DatabaseError(db_err.to_string())
+                    }
                 }
             }
             _ => AppError::DatabaseError(error.to_string()), // For other sqlx::Error variants
@@ -168,7 +168,10 @@ mod tests {
             AppError::BadRequest("test".into()).to_string(),
             "Bad Request: test"
         );
-        assert_eq!(AppError::NotFound("test".into()).to_string(), "Not Found: test");
+        assert_eq!(
+            AppError::NotFound("test".into()).to_string(),
+            "Not Found: test"
+        );
         assert_eq!(
             AppError::InternalServerError("test".into()).to_string(),
             "Internal Server Error: test"
@@ -227,8 +230,8 @@ mod tests {
                 Ok(bytes) => bytes,
                 Err(_) => panic!("Failed to convert body to bytes for error: {:?}", error),
             };
-            let body_json: Value = serde_json::from_slice(&bytes)
-                .expect("Response body was not valid JSON");
+            let body_json: Value =
+                serde_json::from_slice(&bytes).expect("Response body was not valid JSON");
             assert_eq!(body_json, expected_body);
         }
     }
@@ -267,7 +270,10 @@ mod tests {
                 // Check that the message from our From impl is related to the original error
                 assert!(msg.contains("InvalidToken"));
             }
-            _ => panic!("Expected AppError::Unauthorized for jwt error, got {:?}", app_error),
+            _ => panic!(
+                "Expected AppError::Unauthorized for jwt error, got {:?}",
+                app_error
+            ),
         }
     }
 
@@ -278,7 +284,10 @@ mod tests {
         let malformed_hash = "$2b$12$thisisnotavalidbcrypthash"; // Example of a malformed hash
         let bcrypt_result = bcrypt::verify("anypassword", malformed_hash);
 
-        assert!(bcrypt_result.is_err(), "bcrypt::verify should fail with a malformed hash.");
+        assert!(
+            bcrypt_result.is_err(),
+            "bcrypt::verify should fail with a malformed hash."
+        );
 
         if let Err(bcrypt_err) = bcrypt_result {
             let app_error: AppError = bcrypt_err.into(); // Relies on our From impl
@@ -287,9 +296,15 @@ mod tests {
                     // The exact message from bcrypt::Error::to_string() can be generic.
                     // We're ensuring our From impl correctly wraps it.
                     // bcrypt might output "invalid hash" or a similar message.
-                    assert!(!msg.is_empty(), "Error message from bcrypt error should not be empty");
+                    assert!(
+                        !msg.is_empty(),
+                        "Error message from bcrypt error should not be empty"
+                    );
                 }
-                _ => panic!("Expected AppError::InternalServerError for bcrypt error, got {:?}", app_error),
+                _ => panic!(
+                    "Expected AppError::InternalServerError for bcrypt error, got {:?}",
+                    app_error
+                ),
             }
         } else {
             panic!("bcrypt::verify did not return an error as expected for a malformed hash.");
@@ -305,42 +320,45 @@ mod tests {
             AppError::NotFound(msg) => {
                 assert_eq!(msg, "Record not found");
             }
-            _ => panic!("Expected AppError::NotFound for sqlx::Error::RowNotFound, got {:?}", app_error_not_found),
+            _ => panic!(
+                "Expected AppError::NotFound for sqlx::Error::RowNotFound, got {:?}",
+                app_error_not_found
+            ),
         }
 
-        // Test a generic sqlx::Error (e.g., PoolTimedOut) to cover the general fallback
-        // sqlx::Error::PoolTimedOut is simple to construct if available directly
-        // If not, we can use sqlx::Error::Io or sqlx::Error::Tls as examples.
-        // Let's use sqlx::Error::Configuration as it's straightforward.
-        let config_error_str = "Simulated config error".to_string();
-        let config_err = sqlx::Error::Configuration(config_error_str.clone().into()); 
-        let app_error_config: AppError = config_err.into();
-        match app_error_config {
-            AppError::DatabaseError(msg) => {
-                // The message should contain the original error's display output
-                assert!(msg.contains(&config_error_str));
-            }
-            _ => panic!("Expected AppError::DatabaseError for sqlx::Error::Configuration, got {:?}", app_error_config),
-        }
-
-        // Add a test for sqlx::Error::Database with a mock non-PgError
-        // This is to cover the path where db_err.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() is None (line 111)
+        // --- Tests for sqlx::Error::Database with MockPgError ---
         #[derive(Debug)]
-        struct MockNonPgError(String);
-        impl std::fmt::Display for MockNonPgError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "MockNonPgError: {}", self.0)
+        struct MockPgError {
+            code: String,
+            message: String,
+            constraint: Option<String>,
+        }
+
+        impl MockPgError {
+            fn new(code: &str, message: &str, constraint: Option<&str>) -> Self {
+                MockPgError {
+                    code: code.to_string(),
+                    message: message.to_string(),
+                    constraint: constraint.map(String::from),
+                }
             }
         }
-        impl std::error::Error for MockNonPgError {}
-        // Mock DatabaseError trait (simplified)
-        impl sqlx::error::DatabaseError for MockNonPgError {
+
+        impl std::fmt::Display for MockPgError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "SQLSTATE {}: {}", self.code, self.message)
+            }
+        }
+
+        impl std::error::Error for MockPgError {}
+
+        impl sqlx::error::DatabaseError for MockPgError {
             fn message(&self) -> &str {
-                &self.0
+                &self.message
             }
 
             fn kind(&self) -> sqlx::error::ErrorKind {
-                sqlx::error::ErrorKind::Other
+                sqlx::error::ErrorKind::Other // Generic kind for mock
             }
 
             fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
@@ -355,27 +373,148 @@ mod tests {
                 self
             }
 
-            // The following methods are optional or not strictly part of the base trait 
-            // for the purpose of this mock, so they are omitted:
-            // - code()
-            // - constraint()
-            // - table()
-            // - column()
-            // - position()
-            // - detail()
-            // - hint()
-            // etc.
-            // We also do not need to provide custom is(), downcast_ref(), downcast_mut().
+            // Implement methods to mimic PgDatabaseError for testing purposes
+            fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+                Some(std::borrow::Cow::Owned(self.code.clone()))
+            }
+
+            fn constraint(&self) -> Option<&str> {
+                self.constraint.as_deref()
+            }
         }
 
-        let mock_db_error_content = "mocked non-pg database error".to_string();
-        let non_pg_database_err = sqlx::Error::Database(Box::new(MockNonPgError(mock_db_error_content.clone())));
-        let app_error_non_pg: AppError = non_pg_database_err.into();
-        match app_error_non_pg {
-            AppError::DatabaseError(msg) => {
-                assert!(msg.contains(&mock_db_error_content));
+        // Helper to create a sqlx::Error::Database from MockPgError
+        // This also ensures our From impl actually tries to downcast to PgDatabaseError
+        // by tricking it with a type that looks like PgDatabaseError but isn't actually it.
+        // The `try_downcast_ref` in the main code relies on the actual type, 
+        // so we need to ensure our mock *is* the error trait object directly.
+        // The correct way is to ensure the `db_err` in `from()` *is* our mock directly,
+        // and that our mock provides the methods `code()` and `constraint()`.
+
+        // Test sqlx::Error::Database for PgDatabaseError - Unique Violation (username)
+        let mock_pg_unique_username_error = MockPgError::new(
+            "23505", "unique_violation", Some("users_username_key")
+        );
+        let db_error_username_taken: sqlx::Error =
+            sqlx::Error::Database(Box::new(mock_pg_unique_username_error));
+        let app_error_username_taken: AppError = db_error_username_taken.into();
+        match app_error_username_taken {
+            AppError::BadRequest(msg) => {
+                assert_eq!(msg, "Username already taken");
             }
-            _ => panic!("Expected AppError::DatabaseError for non-Pg sqlx::Error::Database, got {:?}", app_error_non_pg),
+            _ => panic!(
+                "Expected AppError::BadRequest for username unique violation, got {:?}",
+                app_error_username_taken
+            ),
+        }
+
+        // Test sqlx::Error::Database for PgDatabaseError - Unique Violation (email)
+        let mock_pg_unique_email_error = MockPgError::new(
+            "23505", "unique_violation", Some("users_email_key")
+        );
+        let db_error_email_taken: sqlx::Error =
+            sqlx::Error::Database(Box::new(mock_pg_unique_email_error));
+        let app_error_email_taken: AppError = db_error_email_taken.into();
+        match app_error_email_taken {
+            AppError::BadRequest(msg) => {
+                assert_eq!(msg, "Email already registered");
+            }
+            _ => panic!(
+                "Expected AppError::BadRequest for email unique violation, got {:?}",
+                app_error_email_taken
+            ),
+        }
+
+        // Test sqlx::Error::Database for PgDatabaseError - Unique Violation (generic constraint)
+        let mock_pg_unique_generic_error = MockPgError::new(
+            "23505", "unique_violation", Some("some_other_unique_key")
+        );
+        let db_error_generic_unique: sqlx::Error =
+            sqlx::Error::Database(Box::new(mock_pg_unique_generic_error));
+        let app_error_generic_unique: AppError = db_error_generic_unique.into();
+        match app_error_generic_unique {
+            AppError::BadRequest(msg) => {
+                assert_eq!(msg, "A unique value constraint was violated");
+            }
+            _ => panic!(
+                "Expected AppError::BadRequest for generic unique violation, got {:?}",
+                app_error_generic_unique
+            ),
+        }
+
+        // Test sqlx::Error::Database for PgDatabaseError - Other PG Error (not 23505)
+        let other_pg_error_code = "22007"; // Example: invalid_datetime_format
+        let other_pg_error_message = "Invalid datetime format simulated".to_string();
+        let mock_pg_other_error = MockPgError::new(
+            other_pg_error_code, &other_pg_error_message, None
+        );
+        let db_error_other_pg: sqlx::Error = sqlx::Error::Database(Box::new(mock_pg_other_error));
+        let app_error_other_pg: AppError = db_error_other_pg.into();
+        match app_error_other_pg {
+            AppError::DatabaseError(msg) => {
+                // The message from pg_err.to_string() is `SQLSTATE <code>: <message>`
+                assert!(msg.contains(other_pg_error_code));
+                assert!(msg.contains(&other_pg_error_message));
+            }
+            _ => panic!(
+                "Expected AppError::DatabaseError for other PG error, got {:?}",
+                app_error_other_pg
+            ),
+        }
+        // --- End of MockPgError tests ---
+
+        // Test sqlx::Error::Database for a non-PgDatabaseError (generic DB error)
+        // This covers the path where db_err.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() is None
+        #[derive(Debug)]
+        struct MockNonPgError(String);
+        impl std::fmt::Display for MockNonPgError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
+        impl std::error::Error for MockNonPgError {}
+        impl sqlx::error::DatabaseError for MockNonPgError {
+            fn message(&self) -> &str {
+                &self.0
+            }
+            fn kind(&self) -> sqlx::error::ErrorKind {
+                sqlx::error::ErrorKind::Other
+            }
+            fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+                self
+            }
+            fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+                self
+            }
+            fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+                self
+            }
+        }
+        let non_pg_db_error_str = "Simulated non-PG database error".to_string();
+        let non_pg_db_err = sqlx::Error::Database(Box::new(MockNonPgError(non_pg_db_error_str.clone())));
+        let app_error_non_pg_db: AppError = non_pg_db_err.into();
+        match app_error_non_pg_db {
+            AppError::DatabaseError(msg) => {
+                assert!(msg.contains(&non_pg_db_error_str));
+            }
+            _ => panic!(
+                "Expected AppError::DatabaseError for non-PG DB error, got {:?}",
+                app_error_non_pg_db
+            ),
+        }
+
+        // Test a generic sqlx::Error (e.g., Configuration) to cover the general fallback (_ case)
+        let config_error_str = "Simulated config error".to_string();
+        let config_err = sqlx::Error::Configuration(config_error_str.clone().into());
+        let app_error_config: AppError = config_err.into();
+        match app_error_config {
+            AppError::DatabaseError(msg) => {
+                assert!(msg.contains(&config_error_str));
+            }
+            _ => panic!(
+                "Expected AppError::DatabaseError for sqlx::Error::Configuration, got {:?}",
+                app_error_config
+            ),
         }
     }
 }
