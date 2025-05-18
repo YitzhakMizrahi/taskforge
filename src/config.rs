@@ -96,7 +96,7 @@ mod tests {
         env::remove_var("DATABASE_URL"); // This is the variable we expect to cause the panic
         env::set_var("SERVER_PORT", "8080"); // Set to a known valid default
         env::set_var("SERVER_HOST", "127.0.0.1"); // Set to a known valid default
-        
+
         let result = std::panic::catch_unwind(|| {
             Config::from_env();
         });
@@ -118,18 +118,32 @@ mod tests {
             env::remove_var("SERVER_HOST");
         }
 
-        assert!(result.is_err(), "Config::from_env should have panicked when DATABASE_URL is missing.");
-        
+        assert!(
+            result.is_err(),
+            "Config::from_env should have panicked when DATABASE_URL is missing."
+        );
+
         // Check the panic message
-        let panic_payload_err = result.err().expect("Test did not panic as expected, or panic was already handled.");
+        let panic_payload_err = result
+            .err()
+            .expect("Test did not panic as expected, or panic was already handled.");
         if let Some(panic_msg_string) = panic_payload_err.downcast_ref::<String>() {
-            assert!(panic_msg_string.contains("DATABASE_URL must be set"), 
-                    "Panic message did not contain expected text. Got: {}", panic_msg_string);
+            assert!(
+                panic_msg_string.contains("DATABASE_URL must be set"),
+                "Panic message did not contain expected text. Got: {}",
+                panic_msg_string
+            );
         } else if let Some(panic_msg_str) = panic_payload_err.downcast_ref::<&str>() {
-            assert!(panic_msg_str.contains("DATABASE_URL must be set"), 
-                    "Panic message did not contain expected text. Got: {}", panic_msg_str);
+            assert!(
+                panic_msg_str.contains("DATABASE_URL must be set"),
+                "Panic message did not contain expected text. Got: {}",
+                panic_msg_str
+            );
         } else {
-            panic!("Panic payload was not a String or &str. Actual payload: {:?}", panic_payload_err);
+            panic!(
+                "Panic payload was not a String or &str. Actual payload: {:?}",
+                panic_payload_err
+            );
         }
     }
 
