@@ -91,12 +91,16 @@ impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> AppError {
         match error {
             sqlx::Error::RowNotFound => AppError::NotFound("Record not found".into()),
-            sqlx::Error::Database(db_err) => { // db_err is Box<dyn sqlx::error::DatabaseError + ...>
-                match db_err.code() { // db_err.code() is Option<Cow<'_, str>>
+            sqlx::Error::Database(db_err) => {
+                // db_err is Box<dyn sqlx::error::DatabaseError + ...>
+                match db_err.code() {
+                    // db_err.code() is Option<Cow<'_, str>>
                     Some(code_cow) => {
                         let code_str = code_cow.as_ref(); // code_str is &str
-                        if code_str == "23505" { // Unique violation
-                            if let Some(constraint_cow) = db_err.constraint() { // constraint_cow is Cow<'_, str>
+                        if code_str == "23505" {
+                            // Unique violation
+                            if let Some(constraint_cow) = db_err.constraint() {
+                                // constraint_cow is Cow<'_, str>
                                 let constraint_str: &str = constraint_cow.as_ref(); // constraint_str is &str
                                 if constraint_str.contains("username") {
                                     return AppError::BadRequest("Username already taken".into());
@@ -113,7 +117,8 @@ impl From<sqlx::Error> for AppError {
                         // Fallback for other DB error codes
                         AppError::DatabaseError(db_err.to_string())
                     }
-                    None => { // No error code available from the DatabaseError trait
+                    None => {
+                        // No error code available from the DatabaseError trait
                         AppError::DatabaseError(db_err.to_string())
                     }
                 }
@@ -386,15 +391,14 @@ mod tests {
         // Helper to create a sqlx::Error::Database from MockPgError
         // This also ensures our From impl actually tries to downcast to PgDatabaseError
         // by tricking it with a type that looks like PgDatabaseError but isn't actually it.
-        // The `try_downcast_ref` in the main code relies on the actual type, 
+        // The `try_downcast_ref` in the main code relies on the actual type,
         // so we need to ensure our mock *is* the error trait object directly.
         // The correct way is to ensure the `db_err` in `from()` *is* our mock directly,
         // and that our mock provides the methods `code()` and `constraint()`.
 
         // Test sqlx::Error::Database for PgDatabaseError - Unique Violation (username)
-        let mock_pg_unique_username_error = MockPgError::new(
-            "23505", "unique_violation", Some("users_username_key")
-        );
+        let mock_pg_unique_username_error =
+            MockPgError::new("23505", "unique_violation", Some("users_username_key"));
         let db_error_username_taken: sqlx::Error =
             sqlx::Error::Database(Box::new(mock_pg_unique_username_error));
         let app_error_username_taken: AppError = db_error_username_taken.into();
@@ -409,9 +413,8 @@ mod tests {
         }
 
         // Test sqlx::Error::Database for PgDatabaseError - Unique Violation (email)
-        let mock_pg_unique_email_error = MockPgError::new(
-            "23505", "unique_violation", Some("users_email_key")
-        );
+        let mock_pg_unique_email_error =
+            MockPgError::new("23505", "unique_violation", Some("users_email_key"));
         let db_error_email_taken: sqlx::Error =
             sqlx::Error::Database(Box::new(mock_pg_unique_email_error));
         let app_error_email_taken: AppError = db_error_email_taken.into();
@@ -426,9 +429,8 @@ mod tests {
         }
 
         // Test sqlx::Error::Database for PgDatabaseError - Unique Violation (generic constraint)
-        let mock_pg_unique_generic_error = MockPgError::new(
-            "23505", "unique_violation", Some("some_other_unique_key")
-        );
+        let mock_pg_unique_generic_error =
+            MockPgError::new("23505", "unique_violation", Some("some_other_unique_key"));
         let db_error_generic_unique: sqlx::Error =
             sqlx::Error::Database(Box::new(mock_pg_unique_generic_error));
         let app_error_generic_unique: AppError = db_error_generic_unique.into();
@@ -445,9 +447,8 @@ mod tests {
         // Test sqlx::Error::Database for PgDatabaseError - Other PG Error (not 23505)
         let other_pg_error_code = "22007"; // Example: invalid_datetime_format
         let other_pg_error_message = "Invalid datetime format simulated".to_string();
-        let mock_pg_other_error = MockPgError::new(
-            other_pg_error_code, &other_pg_error_message, None
-        );
+        let mock_pg_other_error =
+            MockPgError::new(other_pg_error_code, &other_pg_error_message, None);
         let db_error_other_pg: sqlx::Error = sqlx::Error::Database(Box::new(mock_pg_other_error));
         let app_error_other_pg: AppError = db_error_other_pg.into();
         match app_error_other_pg {
@@ -491,7 +492,8 @@ mod tests {
             }
         }
         let non_pg_db_error_str = "Simulated non-PG database error".to_string();
-        let non_pg_db_err = sqlx::Error::Database(Box::new(MockNonPgError(non_pg_db_error_str.clone())));
+        let non_pg_db_err =
+            sqlx::Error::Database(Box::new(MockNonPgError(non_pg_db_error_str.clone())));
         let app_error_non_pg_db: AppError = non_pg_db_err.into();
         match app_error_non_pg_db {
             AppError::DatabaseError(msg) => {
