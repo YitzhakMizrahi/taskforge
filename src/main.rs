@@ -65,12 +65,15 @@ mod tests {
     async fn test_run_app_panics_on_db_connection_failure() {
         // Set an invalid DATABASE_URL to cause PgPoolOptions::connect to fail
         // Ensure the URL is syntactically valid for parsing but logically invalid for connection
-        env::set_var("DATABASE_URL", "postgres://user:password@invalid-host-that-does-not-exist:5432/mydb_main_test");
-        
+        env::set_var(
+            "DATABASE_URL",
+            "postgres://user:password@invalid-host-that-does-not-exist:5432/mydb_main_test",
+        );
+
         // Set other necessary env vars for Config::from_env() to succeed
         // Use a distinct port to avoid conflicts, though the server might not fully start
         // if the panic happens early, as expected.
-        env::set_var("SERVER_PORT", "9999"); 
+        env::set_var("SERVER_PORT", "9999");
         env::set_var("SERVER_HOST", "127.0.0.1");
 
         // Call the extracted function; it should panic

@@ -69,9 +69,9 @@ mod tests {
         // Ensure DATABASE_URL is not set
         env::remove_var("DATABASE_URL");
         // Clear other vars that might have defaults or cause other panics first
-        env::remove_var("SERVER_PORT"); 
+        env::remove_var("SERVER_PORT");
         env::remove_var("SERVER_HOST");
-        
+
         Config::from_env(); // This should panic
     }
 
