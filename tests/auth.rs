@@ -409,7 +409,7 @@ async fn test_invalid_login_inputs() {
             .set_json(&payload)
             .to_request();
 
-        let resp = test::call_service(&app, req).await;
+    let resp = test::call_service(&app, req).await;
         let status = resp.status();
         let body_bytes = test::read_body(resp).await;
 

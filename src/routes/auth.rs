@@ -38,8 +38,8 @@ pub async fn register(
 
     // Check if email already exists
     let existing_user = sqlx::query!("SELECT id FROM users WHERE email = $1", register_data.email)
-        .fetch_optional(&**pool)
-        .await?;
+    .fetch_optional(&**pool)
+    .await?;
 
     if existing_user.is_some() {
         return Err(AppError::BadRequest("Email already registered".into()));
