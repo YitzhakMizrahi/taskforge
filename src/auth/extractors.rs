@@ -20,11 +20,11 @@ impl FromRequest for AuthenticatedUserId {
     type Future = Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        eprintln!(
-            "[DEBUG EXTRACTOR] Attempting to extract user_id from extensions for path: {}. Extensions available: {:?}", 
-            req.path(), 
-            req.extensions()
-        );
+        // eprintln!(
+        //     "[DEBUG EXTRACTOR] Attempting to extract user_id from extensions for path: {}. Extensions available: {:?}", 
+        //     req.path(), 
+        //     req.extensions()
+        // );
         match req.extensions().get::<i32>().cloned() {
             Some(user_id) => ready(Ok(AuthenticatedUserId(user_id))),
             None => {

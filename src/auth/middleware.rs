@@ -77,11 +77,6 @@ where
                     Ok(claims) => {
                         let user_id_to_insert = claims.sub;
                         req.extensions_mut().insert(user_id_to_insert);
-                        eprintln!(
-                            "[DEBUG MIDDLEWARE] Inserted user_id: {} into request extensions for path: {}",
-                            user_id_to_insert,
-                            req.path()
-                        );
                         let fut = self.service.call(req);
                         Box::pin(fut)
                     }
