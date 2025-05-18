@@ -20,8 +20,8 @@ pub struct Claims {
 /// * `user_id` - The ID of the user for whom the token is generated.
 ///
 /// # Returns
-/// A `Result` containing the JWT string if successful, or an `AppError` if token generation fails
-/// (e.g., `JWT_SECRET` not set, encoding error).
+/// A `Result` containing the JWT string if successful.
+/// Returns `AppError::InternalServerError` if `JWT_SECRET` is not set or if token encoding fails.
 pub fn generate_token(user_id: i32) -> Result<String, AppError> {
     let expiration = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
@@ -58,8 +58,9 @@ pub fn generate_token(user_id: i32) -> Result<String, AppError> {
 /// * `token` - The JWT string to verify.
 ///
 /// # Returns
-/// A `Result` containing the decoded `Claims` if the token is valid, or an `AppError` if verification fails
-/// (e.g., `JWT_SECRET` not set, invalid signature, expired token, malformed token).
+/// A `Result` containing the decoded `Claims` if the token is valid.
+/// Returns `AppError::InternalServerError` if `JWT_SECRET` is not set.
+/// Returns `AppError::Unauthorized` if the token is malformed, its signature is invalid, or it has expired.
 pub fn verify_token(token: &str) -> Result<Claims, AppError> {
     let secret = match std::env::var("JWT_SECRET") {
         Ok(val) => val,

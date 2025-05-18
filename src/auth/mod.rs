@@ -1,3 +1,14 @@
+//! # Authentication Module
+//!
+//! This module handles all aspects of user authentication, including:
+//! - User registration and login request structures.
+//! - Password hashing and verification.
+//! - JWT (JSON Web Token) generation and verification.
+//! - Middleware for protecting routes that require authentication.
+//! - Custom extractors for accessing authenticated user information.
+//!
+//! It re-exports key functionalities for use elsewhere in the application.
+
 pub mod extractors;
 pub mod middleware;
 pub mod password;

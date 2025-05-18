@@ -1,15 +1,16 @@
 use crate::error::AppError;
 use bcrypt::{hash, verify};
 
-/// Hashes a given password using bcrypt with a default cost factor.
+/// Hashes a given password using bcrypt with a cost factor of 12.
 ///
 /// # Arguments
 /// * `password` - The plain text password to hash.
 ///
 /// # Returns
-/// A `Result` containing the hashed password string if successful, or an `AppError` if hashing fails.
+/// A `Result` containing the hashed password string if successful.
+/// Returns `AppError::InternalServerError` if the hashing process fails.
 pub fn hash_password(password: &str) -> Result<String, AppError> {
-    hash(password, 12) // bcrypt default cost is 12
+    hash(password, 12) // bcrypt default cost is 12, explicitly using it here.
         .map_err(|e| AppError::InternalServerError(format!("Failed to hash password: {}", e)))
 }
 
@@ -21,7 +22,7 @@ pub fn hash_password(password: &str) -> Result<String, AppError> {
 ///
 /// # Returns
 /// A `Result` containing `true` if the password matches the hash, `false` otherwise.
-/// Returns an `AppError` if the verification process itself fails (e.g., malformed hash string).
+/// Returns `AppError::InternalServerError` if the verification process itself fails (e.g., due to a malformed hash string).
 pub fn verify_password(password: &str, hashed_password: &str) -> Result<bool, AppError> {
     verify(password, hashed_password)
         .map_err(|e| AppError::InternalServerError(format!("Failed to verify password: {}", e)))

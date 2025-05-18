@@ -85,8 +85,14 @@ impl ResponseError for AppError {
 
 /// Converts `sqlx::Error` into `AppError`.
 ///
-/// Specific cases like `sqlx::Error::RowNotFound` are mapped to `AppError::NotFound`,
-/// while other database errors become `AppError::DatabaseError`.
+/// Specific cases like `sqlx::Error::RowNotFound` are mapped to `AppError::NotFound`.
+/// For other database errors (`sqlx::Error::Database`), it attempts to interpret specific
+/// PostgreSQL error codes:
+/// - Unique constraint violations (error code "23505") are mapped to `AppError::BadRequest`
+///   with messages like "Username already taken" or "Email already registered" if the
+///   constraint name matches known patterns. Otherwise, a generic unique violation message is used.
+/// All other database errors, or errors where specific codes/constraints cannot be determined,
+/// are mapped to `AppError::DatabaseError`, which results in a generic internal server error response.
 impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> AppError {
         match error {

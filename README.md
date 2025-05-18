@@ -30,13 +30,15 @@ Create a `.env` file in the project root with the following variables:
 ```env
 DATABASE_URL=postgres://your_user:your_password@localhost:5432/taskforge
 JWT_SECRET=a_very_secure_and_random_secret_key
-# Optional: For configuring the server binding address
-# SERVER_ADDRESS=127.0.0.1:8080
+# Optional: Server configuration
+SERVER_HOST=127.0.0.1
+SERVER_PORT=8080
 ```
 
 - `DATABASE_URL`: Connection string for your PostgreSQL database.
 - `JWT_SECRET`: A strong, random secret key used for signing and verifying JWTs.
-- `SERVER_ADDRESS` (Optional): The address and port for the server to listen on. Defaults to `127.0.0.1:8080` if not set and not overridden in `main.rs`.
+- `SERVER_HOST` (Optional): The host address for the server to listen on. Defaults to `127.0.0.1`.
+- `SERVER_PORT` (Optional): The port for the server to listen on. Defaults to `8080`.
 
 ## Database Setup
 
@@ -68,7 +70,8 @@ JWT_SECRET=a_very_secure_and_random_secret_key
     cargo run
     ```
 
-The server will typically start at `http://127.0.0.1:8080`. If you've set `SERVER_ADDRESS` in your `.env` file *and* modified `main.rs` to use it, it will bind to that address.
+The server will start using the `SERVER_HOST` and `SERVER_PORT` specified in your `.env` file,
+_or their defaults (`127.0.0.1:8080`) if not set. The application reads these values directly.
 
 ## Development with Auto-Reload
 

@@ -36,8 +36,9 @@ where
 /// Authentication middleware service.
 ///
 /// This service is created by `AuthMiddleware` and performs the actual
-/// authentication logic for each request.
+/// authentication logic for each request before passing it to the next service.
 pub struct AuthMiddlewareService<S> {
+    /// The next service in the Actix Web processing chain.
     service: S,
 }
 

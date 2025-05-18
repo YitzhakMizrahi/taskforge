@@ -1,12 +1,15 @@
 //! # Route Definitions
 //!
-//! This module consolidates all route handlers for the application and provides
-//! a configuration function to register them with an Actix Web App.
+//! This module consolidates API route handlers for the application and provides
+//! a configuration function (`config`) to register them under the `/api` scope
+//! with an Actix Web App.
 //!
-//! It organizes routes into submodules for better structure:
-//! - `auth`: Handles user authentication (registration, login).
-//! - `health`: Provides health check endpoints.
-//! - `tasks`: Manages task creation, retrieval, updates, and deletion.
+//! It organizes API routes into submodules for better structure:
+//! - `auth`: Handles user authentication (registration, login) under `/api/auth`.
+//! - `tasks`: Manages task creation, retrieval, updates, and deletion under `/api/tasks`.
+//!
+//! Health check routes (from the `health` submodule) are typically registered separately
+//! at the application root.
 
 pub mod auth;
 pub mod health;
