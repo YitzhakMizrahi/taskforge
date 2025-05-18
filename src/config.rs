@@ -191,14 +191,15 @@ mod tests {
         let panic_payload_err = result
             .err()
             .expect("Test did not panic as expected, or panic was already handled.");
-        let panic_message_matches = if let Some(panic_msg_string) = panic_payload_err.downcast_ref::<String>() {
-            panic_msg_string.contains("SERVER_PORT must be a number")
-        } else if let Some(panic_msg_str) = panic_payload_err.downcast_ref::<&str>() {
-            panic_msg_str.contains("SERVER_PORT must be a number")
-        } else {
-            false
-        };
-        
+        let panic_message_matches =
+            if let Some(panic_msg_string) = panic_payload_err.downcast_ref::<String>() {
+                panic_msg_string.contains("SERVER_PORT must be a number")
+            } else if let Some(panic_msg_str) = panic_payload_err.downcast_ref::<&str>() {
+                panic_msg_str.contains("SERVER_PORT must be a number")
+            } else {
+                false
+            };
+
         if !panic_message_matches {
             let actual_message = if let Some(s) = panic_payload_err.downcast_ref::<String>() {
                 s.clone()
