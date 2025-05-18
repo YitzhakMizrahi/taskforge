@@ -1,7 +1,7 @@
+pub mod extractors;
 pub mod middleware;
 pub mod password;
 pub mod token;
-pub mod extractors;
 
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};

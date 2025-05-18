@@ -1,5 +1,5 @@
 use actix_web::dev::Payload;
-use actix_web::{Error as ActixError, FromRequest, HttpRequest, HttpMessage};
+use actix_web::{Error as ActixError, FromRequest, HttpMessage, HttpRequest};
 use std::future::{ready, Ready};
 
 use crate::error::AppError;
@@ -32,7 +32,9 @@ impl FromRequest for AuthenticatedUserId {
                 // and has successfully inserted the user_id. If it's missing, it implies
                 // an issue with middleware setup or an internal logic error after auth.
                 // Responding with Unauthorized is a safe default.
-                let err = AppError::Unauthorized("User ID not found in request. Ensure AuthMiddleware is active.".to_string());
+                let err = AppError::Unauthorized(
+                    "User ID not found in request. Ensure AuthMiddleware is active.".to_string(),
+                );
                 ready(Err(err.into())) // Convert AppError to ActixError
             }
         }
@@ -42,9 +44,9 @@ impl FromRequest for AuthenticatedUserId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use actix_web::dev::Payload;
     use actix_web::http::StatusCode;
     use actix_web::test;
-    use actix_web::dev::Payload;
 
     #[actix_rt::test]
     async fn test_authenticated_user_id_extractor_success() {
@@ -65,9 +67,9 @@ mod tests {
         let mut payload = Payload::None;
         let extracted_id_result = AuthenticatedUserId::from_request(&req, &mut payload).await;
         assert!(extracted_id_result.is_err());
-        
+
         let err = extracted_id_result.unwrap_err();
         let response = err.error_response();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
-} 
+}

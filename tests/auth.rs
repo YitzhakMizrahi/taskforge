@@ -23,7 +23,8 @@ async fn test_register_and_login_flow() {
     );
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
-    let _jwt_secret_for_test_setup = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set for tests"); // Not strictly needed for app, but good to check
+    let _jwt_secret_for_test_setup =
+        std::env::var("JWT_SECRET").expect("JWT_SECRET must be set for tests"); // Not strictly needed for app, but good to check
 
     let pool = PgPool::connect(&database_url)
         .await
