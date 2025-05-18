@@ -34,6 +34,8 @@ pub async fn get_tasks(
 ) -> Result<impl Responder, AppError> {
     let authenticated_user_id = get_user_id(&req)?;
 
+    // Base query to select tasks for the authenticated user.
+    // Conditions for status, priority, assigned_to, and search terms are dynamically appended.
     let mut sql = String::from(
         "SELECT id, title, description, priority, status, due_date, created_at, updated_at, user_id, assigned_to \
          FROM tasks WHERE user_id = $1"
