@@ -451,3 +451,333 @@ async fn test_task_ownership_and_authorization() {
     cleanup_user(&pool, user_a_email).await;
     cleanup_user(&pool, user_b_email).await;
 }
+
+#[actix_rt::test]
+async fn test_get_tasks_with_filtering() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware)
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+
+    let user_email = "filter_user@example.com";
+    let user_username = "filter_user";
+    let user_password = "PasswordFilter123!";
+
+    cleanup_user(&pool, user_email).await; // Ensure clean state
+    let test_user = register_and_login_user(&app, user_email, user_username, user_password)
+        .await
+        .expect("Failed to register/login user for filtering tests");
+
+    // --- Create a diverse set of tasks ---
+    let tasks_to_create = vec![
+        json!({ "title": "Alpha Todo Low", "status": TaskStatus::Todo, "priority": TaskPriority::Low, "description": "Searchable one" }),
+        json!({ "title": "Bravo InProgress Medium", "status": TaskStatus::InProgress, "priority": TaskPriority::Medium, "description": "Another task" }),
+        json!({ "title": "Charlie Done High", "status": TaskStatus::Done, "priority": TaskPriority::High, "description": "High importance" }),
+        json!({ "title": "Delta Todo Medium", "status": TaskStatus::Todo, "priority": TaskPriority::Medium, "description": "Searchable two" }),
+        json!({ "title": "Echo Review Urgent", "status": TaskStatus::Review, "priority": TaskPriority::Urgent, "description": "Urgent review needed" }),
+    ];
+
+    let mut created_task_ids: Vec<uuid::Uuid> = Vec::new();
+    for task_payload in tasks_to_create {
+        let req = test::TestRequest::post()
+            .uri("/api/tasks")
+            .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+            .set_json(&task_payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED, "Failed to create task for filtering setup");
+        let task: Task = test::read_body_json(resp).await;
+        created_task_ids.push(task.id);
+    }
+    assert_eq!(created_task_ids.len(), 5, "Incorrect number of tasks created for setup");
+
+    // --- Test filtering ---
+
+    // Filter by status: Todo (should be 2 tasks: Alpha, Delta)
+    let req_status_todo = test::TestRequest::get()
+        .uri("/api/tasks?status=todo")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_status_todo = test::call_service(&app, req_status_todo).await;
+    assert_eq!(resp_status_todo.status(), actix_web::http::StatusCode::OK);
+    let tasks_status_todo: Vec<Task> = test::read_body_json(resp_status_todo).await;
+    assert_eq!(tasks_status_todo.len(), 2);
+    assert!(tasks_status_todo.iter().all(|t| t.status == TaskStatus::Todo));
+
+    // Filter by priority: Medium (should be 2 tasks: Bravo, Delta)
+    let req_prio_medium = test::TestRequest::get()
+        .uri("/api/tasks?priority=medium")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_prio_medium = test::call_service(&app, req_prio_medium).await;
+    assert_eq!(resp_prio_medium.status(), actix_web::http::StatusCode::OK);
+    let tasks_prio_medium: Vec<Task> = test::read_body_json(resp_prio_medium).await;
+    assert_eq!(tasks_prio_medium.len(), 2);
+    assert!(tasks_prio_medium.iter().all(|t| t.priority == Some(TaskPriority::Medium)));
+
+    // Filter by search: "Searchable" (should be 2 tasks: Alpha, Delta)
+    let req_search = test::TestRequest::get()
+        .uri("/api/tasks?search=Searchable") // Case-insensitive in handler, but test with exact case for clarity
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_search = test::call_service(&app, req_search).await;
+    assert_eq!(resp_search.status(), actix_web::http::StatusCode::OK);
+    let tasks_search: Vec<Task> = test::read_body_json(resp_search).await;
+    assert_eq!(tasks_search.len(), 2);
+    assert!(tasks_search.iter().any(|t| t.title.contains("Alpha")));
+    assert!(tasks_search.iter().any(|t| t.title.contains("Delta")));
+
+    // Filter by search: "Alpha" (should match title of 1 task)
+    let req_search_title = test::TestRequest::get()
+        .uri("/api/tasks?search=Alpha")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_search_title = test::call_service(&app, req_search_title).await;
+    assert_eq!(resp_search_title.status(), actix_web::http::StatusCode::OK);
+    let tasks_search_title: Vec<Task> = test::read_body_json(resp_search_title).await;
+    assert_eq!(tasks_search_title.len(), 1);
+    assert_eq!(tasks_search_title[0].title, "Alpha Todo Low");
+
+
+    // Filter by status and priority: status=todo & priority=medium (should be 1 task: Delta)
+    let req_status_prio = test::TestRequest::get()
+        .uri("/api/tasks?status=todo&priority=medium")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_status_prio = test::call_service(&app, req_status_prio).await;
+    assert_eq!(resp_status_prio.status(), actix_web::http::StatusCode::OK);
+    let tasks_status_prio: Vec<Task> = test::read_body_json(resp_status_prio).await;
+    assert_eq!(tasks_status_prio.len(), 1);
+    assert_eq!(tasks_status_prio[0].title, "Delta Todo Medium");
+
+    // Filter yielding no results: status=done & priority=low (no such task)
+    let req_no_results = test::TestRequest::get()
+        .uri("/api/tasks?status=done&priority=low")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_no_results = test::call_service(&app, req_no_results).await;
+    assert_eq!(resp_no_results.status(), actix_web::http::StatusCode::OK);
+    let tasks_no_results: Vec<Task> = test::read_body_json(resp_no_results).await;
+    assert!(tasks_no_results.is_empty());
+
+    // --- Cleanup ---
+    for task_id in created_task_ids {
+        let _ = sqlx::query("DELETE FROM tasks WHERE id = $1 AND user_id = $2")
+            .bind(task_id)
+            .bind(test_user.id)
+            .execute(&pool)
+            .await;
+    }
+    cleanup_user(&pool, user_email).await;
+}
+
+#[actix_rt::test]
+async fn test_create_task_minimal_fields() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware)
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+
+    let user_email = "minimal_user@example.com";
+    cleanup_user(&pool, user_email).await; // Ensure clean state
+    let test_user = register_and_login_user(&app, user_email, "minimal_user", "PassMinimal123!")
+        .await
+        .expect("Failed to register/login user for minimal task test");
+
+    let minimal_payload = json!({
+        "title": "Minimal Task Title",
+        "status": TaskStatus::Todo // Status is mandatory in TaskInput
+        // description, priority, due_date are omitted
+    });
+
+    let req = test::TestRequest::post()
+        .uri("/api/tasks")
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .set_json(&minimal_payload)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED, "Failed to create task with minimal fields");
+
+    let created_task: Task = test::read_body_json(resp).await;
+    assert_eq!(created_task.title, "Minimal Task Title");
+    assert_eq!(created_task.status, TaskStatus::Todo);
+    assert!(created_task.description.is_none());
+    assert!(created_task.priority.is_none()); // Default priority is None if not provided
+    assert!(created_task.due_date.is_none());
+    assert_eq!(created_task.user_id, test_user.id);
+
+    cleanup_user(&pool, user_email).await;
+}
+
+#[actix_rt::test]
+async fn test_update_non_existent_task() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware)
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+
+    let user_email = "non_existent_update_user@example.com";
+    cleanup_user(&pool, user_email).await; 
+    let test_user = register_and_login_user(&app, user_email, "non_existent_updater", "PassNonExistent1!")
+        .await
+        .expect("Failed to register/login user for non-existent task update test");
+
+    let non_existent_task_id = uuid::Uuid::new_v4(); // Random, non-existent UUID
+    let update_payload = json!({
+        "title": "Update for Non-Existent Task",
+        "status": TaskStatus::Done
+    });
+
+    let req = test::TestRequest::put()
+        .uri(&format!("/api/tasks/{}", non_existent_task_id))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .set_json(&update_payload)
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND, "Updating non-existent task did not return 404");
+
+    cleanup_user(&pool, user_email).await;
+}
+
+#[actix_rt::test]
+async fn test_delete_non_existent_task() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware)
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+
+    let user_email = "non_existent_delete_user@example.com";
+    cleanup_user(&pool, user_email).await;
+    let test_user = register_and_login_user(&app, user_email, "non_existent_deleter", "PassNonExistent2!")
+        .await
+        .expect("Failed to register/login user for non-existent task delete test");
+
+    let non_existent_task_id = uuid::Uuid::new_v4(); // Random, non-existent UUID
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/api/tasks/{}", non_existent_task_id))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND, "Deleting non-existent task did not return 404");
+
+    cleanup_user(&pool, user_email).await;
+}
+
+#[actix_rt::test]
+async fn test_task_invalid_uuid_format() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware)
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+    
+    let user_email = "invalid_uuid_user@example.com";
+    cleanup_user(&pool, user_email).await;
+    let test_user = register_and_login_user(&app, user_email, "invalid_uuid_user", "PassInvalidUuid1!")
+        .await
+        .expect("Failed to register/login user for invalid uuid test");
+
+    let invalid_uuid = "not-a-valid-uuid";
+
+    // Test GET with invalid UUID
+    let req_get = test::TestRequest::get()
+        .uri(&format!("/api/tasks/{}", invalid_uuid))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_get = test::call_service(&app, req_get).await;
+    // Actix path extractor for Uuid usually results in 404 if parsing fails before handler
+    assert_eq!(resp_get.status(), actix_web::http::StatusCode::NOT_FOUND, "GET with invalid UUID did not return 404");
+
+    // Test PUT with invalid UUID
+    let update_payload = json!({
+        "title": "Attempted Update",
+        "status": TaskStatus::Todo
+    });
+    let req_put = test::TestRequest::put()
+        .uri(&format!("/api/tasks/{}", invalid_uuid))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .set_json(&update_payload)
+        .to_request();
+    let resp_put = test::call_service(&app, req_put).await;
+    assert_eq!(resp_put.status(), actix_web::http::StatusCode::NOT_FOUND, "PUT with invalid UUID did not return 404");
+
+    // Test DELETE with invalid UUID
+    let req_delete = test::TestRequest::delete()
+        .uri(&format!("/api/tasks/{}", invalid_uuid))
+        .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
+        .to_request();
+    let resp_delete = test::call_service(&app, req_delete).await;
+    assert_eq!(resp_delete.status(), actix_web::http::StatusCode::NOT_FOUND, "DELETE with invalid UUID did not return 404");
+
+    cleanup_user(&pool, user_email).await;
+}

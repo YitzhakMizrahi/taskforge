@@ -91,7 +91,31 @@ impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> AppError {
         match error {
             sqlx::Error::RowNotFound => AppError::NotFound("Record not found".into()),
-            _ => AppError::DatabaseError(error.to_string()),
+            sqlx::Error::Database(db_err) => {
+                // Check if the error is a PostgreSQL specific error
+                if let Some(pg_err) = db_err.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() {
+                    match pg_err.code() {
+                        "23505" => { // Unique violation
+                            if let Some(constraint_name) = pg_err.constraint() {
+                                if constraint_name.contains("username") { // Assuming constraint name like 'users_username_key'
+                                    return AppError::BadRequest("Username already taken".into());
+                                }
+                                if constraint_name.contains("email") { // Assuming constraint name like 'users_email_key'
+                                    return AppError::BadRequest("Email already registered".into());
+                                }
+                            }
+                            // Generic unique violation message if constraint name doesn't give more info
+                            return AppError::BadRequest("A unique value constraint was violated".into());
+                        }
+                        // We can add more specific PostgreSQL error codes here if needed
+                        _ => AppError::DatabaseError(pg_err.to_string()),
+                    }
+                } else {
+                    // Not a PgDatabaseError, or downcast failed, return generic DB error
+                    AppError::DatabaseError(db_err.to_string())
+                }
+            }
+            _ => AppError::DatabaseError(error.to_string()), // For other sqlx::Error variants
         }
     }
 }

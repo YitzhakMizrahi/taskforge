@@ -75,9 +75,33 @@ async fn test_register_and_login_flow() {
     assert_eq!(
         status_conflict,
         actix_web::http::StatusCode::BAD_REQUEST,
-        "Duplicate registration did not fail as expected. Body: {:?}",
+        "Duplicate email registration did not fail as expected with 400. Body: {:?}",
         String::from_utf8_lossy(&body_bytes_conflict)
     );
+    let error_response_email_conflict: serde_json::Value = serde_json::from_slice(&body_bytes_conflict).unwrap();
+    assert_eq!(error_response_email_conflict["error"], "Email already registered");
+
+    // Try to register another user with the same username but different email (should also fail)
+    let register_payload_username_conflict = json!({
+        "username": "integration_user", // Same username
+        "email": "integration_alt@example.com", // Different email
+        "password": "Password123!"
+    });
+    let req_username_conflict = test::TestRequest::post()
+        .uri("/api/auth/register")
+        .set_json(&register_payload_username_conflict)
+        .to_request();
+    let resp_username_conflict = test::call_service(&app, req_username_conflict).await;
+    let status_username_conflict = resp_username_conflict.status();
+    let body_bytes_username_conflict = test::read_body(resp_username_conflict).await;
+    assert_eq!(
+        status_username_conflict,
+        actix_web::http::StatusCode::BAD_REQUEST, // Expecting 400 due to refined error handling
+        "Duplicate username registration did not fail as expected with 400. Body: {:?}",
+        String::from_utf8_lossy(&body_bytes_username_conflict)
+    );
+    let error_response_username_conflict: serde_json::Value = serde_json::from_slice(&body_bytes_username_conflict).unwrap();
+    assert_eq!(error_response_username_conflict["error"], "Username already taken");
 
     // Login with the registered user
     let login_payload = json!({
@@ -162,8 +186,9 @@ async fn test_register_and_login_flow() {
     );
 
     // Clean up created user
-    let _ = sqlx::query("DELETE FROM users WHERE email = $1")
+    let _ = sqlx::query("DELETE FROM users WHERE email = $1 OR email = $2")
         .bind("integration@example.com")
+        .bind("integration_alt@example.com") // Also clean up the alt email if it somehow got created
         .execute(&pool)
         .await;
 }
@@ -383,4 +408,105 @@ async fn test_invalid_login_inputs() {
         .bind(valid_user_email)
         .execute(&pool)
         .await;
+}
+
+#[actix_rt::test]
+async fn test_protected_route_with_invalid_tokens() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware) // Middleware applied here
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+
+    // Scenario 1: Expired Token
+    let expired_claims = taskforge::auth::Claims {
+        sub: 999, // Arbitrary user ID
+        exp: (chrono::Utc::now() - chrono::Duration::hours(1)).timestamp() as usize,
+    };
+    let jwt_secret_for_test = std::env::var("JWT_SECRET").unwrap_or_else(|_| "test_secret".to_string());
+    let expired_token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &expired_claims,
+        &jsonwebtoken::EncodingKey::from_secret(jwt_secret_for_test.as_bytes()),
+    )
+    .expect("Failed to create expired token for test");
+
+    let req_expired = test::TestRequest::get()
+        .uri("/api/tasks") // Any protected route
+        .append_header(("Authorization", format!("Bearer {}", expired_token)))
+        .to_request();
+    let resp_expired_result = test::try_call_service(&app, req_expired).await;
+    assert!(resp_expired_result.is_err(), "Expected an error for expired token");
+    if let Err(e) = resp_expired_result {
+        let err_response_expired = e.error_response();
+        assert_eq!(
+            err_response_expired.status(),
+            actix_web::http::StatusCode::UNAUTHORIZED,
+            "Access with expired token did not result in 401 Unauthorized"
+        );
+    } else {
+        panic!("Expected error for expired token, but got Ok");
+    }
+
+    // Scenario 2: Malformed/Incorrectly Signed Token
+    let malformed_token = "this.is.not.a.valid.jwt";
+    let req_malformed = test::TestRequest::get()
+        .uri("/api/tasks")
+        .append_header(("Authorization", format!("Bearer {}", malformed_token)))
+        .to_request();
+    let resp_malformed_result = test::try_call_service(&app, req_malformed).await;
+    assert!(resp_malformed_result.is_err(), "Expected an error for malformed token");
+    if let Err(e) = resp_malformed_result {
+        let err_response_malformed = e.error_response();
+        assert_eq!(
+            err_response_malformed.status(),
+            actix_web::http::StatusCode::UNAUTHORIZED,
+            "Access with malformed token did not result in 401 Unauthorized"
+        );
+    } else {
+        panic!("Expected error for malformed token, but got Ok");
+    }
+
+    // Scenario 3: Token signed with a different secret
+    let other_secret = "a_completely_different_secret_for_this_token";
+    let claims_for_wrong_secret = taskforge::auth::Claims {
+        sub: 998,
+        exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
+    };
+    let token_wrong_secret = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &claims_for_wrong_secret,
+        &jsonwebtoken::EncodingKey::from_secret(other_secret.as_bytes()),
+    )
+    .expect("Failed to create token with wrong secret");
+
+    let req_wrong_secret = test::TestRequest::get()
+        .uri("/api/tasks")
+        .append_header(("Authorization", format!("Bearer {}", token_wrong_secret)))
+        .to_request();
+    let resp_wrong_secret_result = test::try_call_service(&app, req_wrong_secret).await;
+    assert!(resp_wrong_secret_result.is_err(), "Expected an error for token with wrong secret");
+    if let Err(e) = resp_wrong_secret_result {
+        let err_response_wrong_secret = e.error_response();
+        assert_eq!(
+            err_response_wrong_secret.status(),
+            actix_web::http::StatusCode::UNAUTHORIZED,
+            "Access with token signed by different secret did not result in 401 Unauthorized"
+        );
+    } else {
+        panic!("Expected error for token with wrong secret, but got Ok");
+    }
 }
