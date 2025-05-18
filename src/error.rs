@@ -108,9 +108,7 @@ impl From<sqlx::Error> for AppError {
                                 }
                             }
                             // Generic unique violation message if constraint name doesn't give more info
-                            AppError::BadRequest(
-                                "A unique value constraint was violated".into(),
-                            )
+                            AppError::BadRequest("A unique value constraint was violated".into())
                         }
                         // We can add more specific PostgreSQL error codes here if needed
                         _ => AppError::DatabaseError(pg_err.to_string()),
