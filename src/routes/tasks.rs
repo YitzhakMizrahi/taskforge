@@ -1,9 +1,9 @@
 use crate::{
-    auth::get_user_id,
+    auth::extractors::AuthenticatedUserId,
     error::AppError,
     models::{Task, TaskInput, TaskQuery},
 };
-use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
@@ -30,9 +30,9 @@ use validator::Validate;
 pub async fn get_tasks(
     pool: web::Data<PgPool>,
     query_params: web::Query<TaskQuery>,
-    req: HttpRequest,
+    user_id: AuthenticatedUserId,
 ) -> Result<impl Responder, AppError> {
-    let authenticated_user_id = get_user_id(&req)?;
+    let authenticated_user_id = user_id.0;
 
     // Base query to select tasks for the authenticated user.
     // Conditions for status, priority, assigned_to, and search terms are dynamically appended.
@@ -121,13 +121,13 @@ pub async fn get_tasks(
 pub async fn create_task(
     pool: web::Data<PgPool>,
     task_data: web::Json<TaskInput>,
-    req: HttpRequest,
+    user_id: AuthenticatedUserId,
 ) -> Result<impl Responder, AppError> {
     // Validate input
     task_data.validate()?;
 
-    let user_id = get_user_id(&req)?;
-    let task = Task::new(task_data.into_inner(), user_id);
+    let authenticated_user_id = user_id.0;
+    let task = Task::new(task_data.into_inner(), authenticated_user_id);
 
     // Insert task
     let result = sqlx::query_as::<_, Task>(
@@ -165,9 +165,9 @@ pub async fn create_task(
 pub async fn get_task(
     pool: web::Data<PgPool>,
     task_id: web::Path<Uuid>,
-    req: HttpRequest,
+    user_id: AuthenticatedUserId,
 ) -> Result<impl Responder, AppError> {
-    let authenticated_user_id = get_user_id(&req)?;
+    let authenticated_user_id = user_id.0;
     let task_uuid = task_id.into_inner();
 
     let task = sqlx::query_as::<_, Task>(
@@ -214,10 +214,10 @@ pub async fn update_task(
     pool: web::Data<PgPool>,
     task_id: web::Path<Uuid>,
     task_data: web::Json<TaskInput>,
-    req: HttpRequest,
+    user_id: AuthenticatedUserId,
 ) -> Result<impl Responder, AppError> {
     task_data.validate()?;
-    let authenticated_user_id = get_user_id(&req)?;
+    let authenticated_user_id = user_id.0;
     let task_uuid = task_id.into_inner();
 
     // First, verify ownership
@@ -274,9 +274,9 @@ pub async fn update_task(
 pub async fn delete_task(
     pool: web::Data<PgPool>,
     task_id: web::Path<Uuid>,
-    req: HttpRequest,
+    user_id: AuthenticatedUserId,
 ) -> Result<impl Responder, AppError> {
-    let authenticated_user_id = get_user_id(&req)?;
+    let authenticated_user_id = user_id.0;
     let task_uuid = task_id.into_inner();
 
     let result = sqlx::query!(

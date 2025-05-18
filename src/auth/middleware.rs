@@ -75,7 +75,13 @@ where
                 match verify_token(token) {
                     // verify_token returns Result<Claims, AppError>
                     Ok(claims) => {
-                        req.extensions_mut().insert(claims);
+                        let user_id_to_insert = claims.sub;
+                        req.extensions_mut().insert(user_id_to_insert);
+                        eprintln!(
+                            "[DEBUG MIDDLEWARE] Inserted user_id: {} into request extensions for path: {}",
+                            user_id_to_insert,
+                            req.path()
+                        );
                         let fut = self.service.call(req);
                         Box::pin(fut)
                     }

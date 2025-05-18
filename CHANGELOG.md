@@ -65,4 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected `get_tasks` dynamic query construction in `src/routes/tasks.rs` to properly bind enum values and search terms.
 - Resolved `rust-analyzer(macro-error)` for `sqlx::query!` by installing `sqlx-cli`, running `cargo sqlx prepare`, and configuring `.vscode/settings.json`.
 - Fixed various test failures related to auth, task creation with enums, and task ownership implementation.
-- Addressed pre-commit hook issues including Clippy warnings and compile errors. 
+- Addressed pre-commit hook issues including Clippy warnings and compile errors.
+- `AppError::ValidationError` now returns HTTP 422 instead of 400.
+- Task ownership implemented: `user_id` added to tasks, routes enforce ownership.
+- Corrected `JWT_SECRET` usage in `auth::token::tests` with a `Mutex`.
+- Fixed `test_create_task_unauthorized` to use a real HTTP server and client.
+- Refined `From<sqlx::Error> for AppError` to handle unique constraint violations (username/email) with specific 400 Bad Request messages.
+- Added `AuthenticatedUserId` extractor for cleaner user ID access in route handlers.
+- Resolved various compilation errors and Clippy warnings throughout the refactoring process. 

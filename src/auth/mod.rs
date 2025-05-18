@@ -1,13 +1,11 @@
 pub mod middleware;
 pub mod password;
 pub mod token;
+pub mod extractors;
 
-use actix_web::{HttpMessage, HttpRequest};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
-
-use crate::error::AppError;
 
 // Re-export necessary items
 pub use middleware::AuthMiddleware;
@@ -64,36 +62,6 @@ pub struct AuthResponse {
     /// The unique identifier of the authenticated user.
     pub user_id: i32,
 }
-
-/// Extracts user ID from request extensions if a valid JWT was processed by `AuthMiddleware`.
-///
-/// The user ID is extracted from the `Claims` struct (specifically the `sub` field)
-/// which should have been inserted into request extensions by the `AuthMiddleware`.
-///
-/// # Arguments
-/// * `req` - A reference to the `HttpRequest`.
-///
-/// # Returns
-/// A `Result<i32, AppError>` containing the user ID if found,
-/// or an `AppError::Unauthorized` if claims are not found (e.g., missing or invalid token,
-/// or route not protected by `AuthMiddleware`).
-pub fn get_user_id(req: &HttpRequest) -> Result<i32, AppError> {
-    req.extensions()
-        .get::<Claims>()
-        .map(|claims| claims.sub)
-        .ok_or_else(|| {
-            AppError::Unauthorized(
-                "User ID not found in token claims. Valid token required.".to_string(),
-            )
-        })
-}
-
-/*
-// Old Option<i32> version - kept for reference if needed elsewhere
-pub fn get_user_id_optional(req: &HttpRequest) -> Option<i32> {
-    req.extensions().get::<Claims>().map(|claims| claims.sub)
-}
-*/
 
 #[cfg(test)]
 mod tests {

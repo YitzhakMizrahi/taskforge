@@ -33,8 +33,13 @@ pub fn generate_token(user_id: i32) -> Result<String, AppError> {
         exp: expiration,
     };
 
-    let secret = std::env::var("JWT_SECRET")
-        .map_err(|_| AppError::InternalServerError("JWT_SECRET not set".into()))?;
+    let secret = match std::env::var("JWT_SECRET") {
+        Ok(val) => val,
+        Err(_) => {
+            eprintln!("[DEBUG TOKEN_FN] JWT_SECRET not found in generate_token");
+            return Err(AppError::InternalServerError("JWT_SECRET not set".into()));
+        }
+    };
 
     encode(
         &Header::default(),
@@ -56,8 +61,13 @@ pub fn generate_token(user_id: i32) -> Result<String, AppError> {
 /// A `Result` containing the decoded `Claims` if the token is valid, or an `AppError` if verification fails
 /// (e.g., `JWT_SECRET` not set, invalid signature, expired token, malformed token).
 pub fn verify_token(token: &str) -> Result<Claims, AppError> {
-    let secret = std::env::var("JWT_SECRET")
-        .map_err(|_| AppError::InternalServerError("JWT_SECRET not set".into()))?;
+    let secret = match std::env::var("JWT_SECRET") {
+        Ok(val) => val,
+        Err(_) => {
+            eprintln!("[DEBUG TOKEN_FN] JWT_SECRET not found in verify_token");
+            return Err(AppError::InternalServerError("JWT_SECRET not set".into()));
+        }
+    };
     decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),

@@ -11,8 +11,20 @@ use taskforge::routes::health; // For the health service // Added dotenv // Adde
 #[actix_rt::test]
 async fn test_register_and_login_flow() {
     dotenv().ok(); // Load .env file
-                   // Setup: create a test database pool
+
+    // Debug: Print loaded environment variables
+    println!(
+        "[DEBUG TEST_ENV] DATABASE_URL: {:?}",
+        std::env::var("DATABASE_URL")
+    );
+    println!(
+        "[DEBUG TEST_ENV] JWT_SECRET: {:?}",
+        std::env::var("JWT_SECRET")
+    );
+
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let _jwt_secret_for_test_setup = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set for tests"); // Not strictly needed for app, but good to check
+
     let pool = PgPool::connect(&database_url)
         .await
         .expect("Failed to connect to test DB");

@@ -140,10 +140,11 @@ src/
 ├── main.rs                # Application entry point, HTTP server setup
 ├── lib.rs                 # Library root, module declarations
 ├── auth/
-│   ├── mod.rs             # Authentication DTOs, get_user_id, re-exports
-│   ├── middleware.rs      # Auth middleware logic
-│   ├── password.rs        # Password hashing and verification
-│   └── token.rs           # JWT generation and verification
+│   ├── middleware.rs      # AuthMiddleware and related structs
+│   ├── password.rs        # Password hashing and verification logic
+│   ├── token.rs           # JWT generation and verification (Claims struct)
+│   ├── extractors.rs      # Custom Actix Web extractors (e.g., AuthenticatedUserId)
+│   └── mod.rs             # Authentication DTOs (LoginRequest, RegisterRequest, AuthResponse), USERNAME_REGEX, re-exports
 ├── error.rs               # Custom error types and handling
 ├── models/
 │   ├── mod.rs             # Model re-exports
