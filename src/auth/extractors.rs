@@ -21,8 +21,8 @@ impl FromRequest for AuthenticatedUserId {
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
         // eprintln!(
-        //     "[DEBUG EXTRACTOR] Attempting to extract user_id from extensions for path: {}. Extensions available: {:?}", 
-        //     req.path(), 
+        //     "[DEBUG EXTRACTOR] Attempting to extract user_id from extensions for path: {}. Extensions available: {:?}",
+        //     req.path(),
         //     req.extensions()
         // );
         match req.extensions().get::<i32>().cloned() {
