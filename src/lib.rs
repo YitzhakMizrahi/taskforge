@@ -1,3 +1,9 @@
+#![doc = "The `taskforge` library crate."]
+#![doc = ""]
+#![doc = "This crate contains all the core business logic, domain models, authentication"]
+#![doc = "mechanisms, routing configuration, and error handling for the TaskForge application."]
+#![doc = "It is used by the main binary (`main.rs`) to construct and run the application."]
+
 pub mod auth;
 pub mod config;
 pub mod error;

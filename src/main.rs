@@ -6,7 +6,9 @@ use sqlx::postgres::PgPoolOptions;
 use actix_cors::Cors;
 use actix_web::{middleware, web, App, HttpServer};
 
-// Extracted server logic
+// Extracted server logic. This function encapsulates the main application setup
+// and server execution flow, including environment loading, logging, configuration,
+// database connection, and HTTP server instantiation and startup.
 async fn run_app() -> std::io::Result<()> {
     // Load environment variables
     dotenv::dotenv().ok();
@@ -50,6 +52,10 @@ async fn run_app() -> std::io::Result<()> {
     .await
 }
 
+/// The main entry point for the TaskForge application.
+///
+/// Initializes and runs the Actix web server. This function sets up the necessary
+/// environment, configuration, and services before starting the server.
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     run_app().await

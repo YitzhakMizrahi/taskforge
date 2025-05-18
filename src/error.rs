@@ -97,25 +97,30 @@ impl From<sqlx::Error> for AppError {
                     // db_err.code() is Option<Cow<'_, str>>
                     Some(code_cow) => {
                         let code_str = code_cow.as_ref(); // code_str is &str
-                        if code_str == "23505" {
-                            // Unique violation
-                            if let Some(constraint_cow) = db_err.constraint() {
-                                // constraint_cow is Cow<'_, str>
-                                let constraint_str: &str = constraint_cow.as_ref(); // constraint_str is &str
-                                if constraint_str.contains("username") {
-                                    return AppError::BadRequest("Username already taken".into());
+                        if code_str == "23505" { // Unique violation code
+                            if let Some(constraint_name) = db_err.constraint() {
+                                // constraint_name is Cow<'_, str>, convert to &str for easier comparison
+                                let constraint_cow = constraint_name;
+                                if !constraint_cow.is_empty() {
+                                    let constraint_str: &str = constraint_cow; // Already fixed by clippy or previously
+                                    if constraint_str.contains("username") {
+                                        return AppError::BadRequest("Username already taken".into());
+                                    }
+                                    if constraint_str.contains("email") {
+                                        return AppError::BadRequest("Email already registered".into());
+                                    }
                                 }
-                                if constraint_str.contains("email") {
-                                    return AppError::BadRequest("Email already registered".into());
-                                }
+                                // Generic unique violation message if specific constraint name didn't match known ones
+                                return AppError::BadRequest(
+                                    "A unique value constraint was violated".into(),
+                                );
+                            } else {
+                                // Unique violation (23505) but no constraint name available.
+                                AppError::DatabaseError(db_err.to_string())
                             }
-                            // Generic unique violation message if constraint name doesn't give more info
-                            return AppError::BadRequest(
-                                "A unique value constraint was violated".into(),
-                            );
+                        } else { // Not a unique violation code (not "23505")
+                            AppError::DatabaseError(db_err.to_string())
                         }
-                        // Fallback for other DB error codes
-                        AppError::DatabaseError(db_err.to_string())
                     }
                     None => {
                         // No error code available from the DatabaseError trait
