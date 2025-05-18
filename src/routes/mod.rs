@@ -39,6 +39,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(tasks::create_task)
             .service(tasks::get_task)
             .service(tasks::update_task)
-            .service(tasks::delete_task),
+            .service(tasks::delete_task)
+            .service(tasks::assign_task),
     );
 }

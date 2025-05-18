@@ -100,6 +100,13 @@ pub struct TaskQuery {
     pub search: Option<String>,
 }
 
+/// Request body for assigning a task to a user.
+#[derive(Debug, Deserialize)]
+pub struct AssignTaskRequest {
+    /// The ID of the user to whom the task should be assigned.
+    pub assignee_id: i32,
+}
+
 impl Task {
     /// Creates a new `Task` instance from `TaskInput` and the creator's `user_id`.
     /// Sets `created_at`, `updated_at` to the current time, and `id` to a new UUID.

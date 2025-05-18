@@ -827,3 +827,203 @@ async fn test_task_invalid_uuid_format() {
 
     cleanup_user(&pool, user_email).await;
 }
+
+#[actix_rt::test]
+async fn test_assign_task_flow() {
+    dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header()
+                    .max_age(3600),
+            )
+            .wrap(Logger::default())
+            .service(health::health)
+            .service(
+                web::scope("/api")
+                    .wrap(taskforge::auth::AuthMiddleware)
+                    .configure(routes::config),
+            ),
+    )
+    .await;
+
+    let owner_email = "task_owner_assign@example.com";
+    let owner_username = "task_owner_assign";
+    let owner_password = "PasswordOwnerAssign1!";
+
+    let assignee_email = "task_assignee@example.com";
+    let assignee_username = "task_assignee";
+    let assignee_password = "PasswordAssignee1!";
+
+    // Cleanup potential old users
+    cleanup_user(&pool, owner_email).await;
+    cleanup_user(&pool, assignee_email).await;
+
+    // Register Task Owner
+    let task_owner = register_and_login_user(&app, owner_email, owner_username, owner_password)
+        .await
+        .expect("Failed to register/login Task Owner");
+
+    // Register Assignee User
+    let assignee_user =
+        register_and_login_user(&app, assignee_email, assignee_username, assignee_password)
+            .await
+            .expect("Failed to register/login Assignee User");
+
+    // 1. Task Owner creates a task
+    let task_payload_create = json!({
+        "title": "Task for Assignment",
+        "status": TaskStatus::Todo,
+        "priority": TaskPriority::Medium
+    });
+    let req_create_task = test::TestRequest::post()
+        .uri("/api/tasks")
+        .append_header((
+            header::AUTHORIZATION,
+            format!("Bearer {}", task_owner.token),
+        ))
+        .set_json(&task_payload_create)
+        .to_request();
+    let resp_create_task = test::call_service(&app, req_create_task).await;
+    assert_eq!(
+        resp_create_task.status(),
+        actix_web::http::StatusCode::CREATED
+    );
+    let created_task: Task = test::read_body_json(resp_create_task).await;
+    let task_to_assign_id = created_task.id;
+
+    // --- Test Scenarios ---
+
+    // 2. Successful Assignment by Owner
+    let assign_payload = json!({ "assignee_id": assignee_user.id });
+    let req_assign_success = test::TestRequest::post()
+        .uri(&format!("/api/tasks/{}/assign", task_to_assign_id))
+        .append_header((
+            header::AUTHORIZATION,
+            format!("Bearer {}", task_owner.token),
+        ))
+        .set_json(&assign_payload)
+        .to_request();
+
+    let resp_assign_success = test::call_service(&app, req_assign_success).await;
+    let status_code = resp_assign_success.status();
+
+    if status_code != actix_web::http::StatusCode::OK {
+        // Read body for error message before panicking
+        // Note: this consumes resp_assign_success, so it cannot be used further for JSON parsing.
+        let body_bytes = test::read_body(resp_assign_success).await;
+        let body_str = String::from_utf8_lossy(&body_bytes);
+        panic!(
+            "Failed successful assignment. Expected status 200 OK, got {}. Body: {}",
+            status_code, body_str
+        );
+    }
+
+    // Status is OK, now we need to parse the body.
+    // Since resp_assign_success would have been consumed if we panicked above,
+    // we must re-evaluate how to get the body if the status IS okay.
+    // The original resp_assign_success is still available here if status_code was OK.
+    let assigned_task_resp: Task = test::read_body_json(resp_assign_success).await;
+    assert_eq!(assigned_task_resp.assigned_to, Some(assignee_user.id));
+    assert_eq!(assigned_task_resp.id, task_to_assign_id);
+
+    // 3. Attempt to Assign Non-Owned Task (Assignee tries to assign Owner's task)
+    // Let's use a different task for this, or re-create, to avoid state interference
+    // For simplicity, let's assume assignee_user attempts to assign the same task to task_owner
+    let req_assign_not_owner = test::TestRequest::post()
+        .uri(&format!("/api/tasks/{}/assign", task_to_assign_id))
+        .append_header((
+            header::AUTHORIZATION,
+            format!("Bearer {}", assignee_user.token), // assignee is not owner
+        ))
+        .set_json(json!({ "assignee_id": task_owner.id }))
+        .to_request();
+    let resp_assign_not_owner = test::call_service(&app, req_assign_not_owner).await;
+    assert_eq!(
+        resp_assign_not_owner.status(),
+        actix_web::http::StatusCode::NOT_FOUND, // Or FORBIDDEN, but NOT_FOUND is current pattern for ownership issues
+        "Assigning non-owned task did not fail as expected."
+    );
+
+    // 4. Attempt to Assign Task to Non-Existent User
+    let non_existent_user_id = 999999;
+    let req_assign_to_non_existent_user = test::TestRequest::post()
+        .uri(&format!("/api/tasks/{}/assign", task_to_assign_id))
+        .append_header((
+            header::AUTHORIZATION,
+            format!("Bearer {}", task_owner.token),
+        ))
+        .set_json(json!({ "assignee_id": non_existent_user_id }))
+        .to_request();
+    let resp_assign_to_non_existent_user =
+        test::call_service(&app, req_assign_to_non_existent_user).await;
+    assert_eq!(
+        resp_assign_to_non_existent_user.status(),
+        actix_web::http::StatusCode::BAD_REQUEST,
+        "Assigning to non-existent user did not fail with 400."
+    );
+
+    // 5. Attempt to Assign Non-Existent Task
+    let non_existent_task_id = uuid::Uuid::new_v4();
+    let req_assign_non_existent_task = test::TestRequest::post()
+        .uri(&format!("/api/tasks/{}/assign", non_existent_task_id))
+        .append_header((
+            header::AUTHORIZATION,
+            format!("Bearer {}", task_owner.token),
+        ))
+        .set_json(json!({ "assignee_id": assignee_user.id }))
+        .to_request();
+    let resp_assign_non_existent_task =
+        test::call_service(&app, req_assign_non_existent_task).await;
+    assert_eq!(
+        resp_assign_non_existent_task.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "Assigning non-existent task did not fail with 404."
+    );
+
+    // 6. Attempt to Assign Task Unauthorized (No Token)
+    let req_assign_unauthorized = test::TestRequest::post()
+        .uri(&format!("/api/tasks/{}/assign", task_to_assign_id))
+        // No Authorization header
+        .set_json(json!({ "assignee_id": assignee_user.id }))
+        .to_request();
+
+    // Use try_call_service as AuthMiddleware might return Err directly
+    let result_assign_unauthorized = test::try_call_service(&app, req_assign_unauthorized).await;
+    assert!(
+        result_assign_unauthorized.is_err(),
+        "Expected an error for missing token, but got Ok"
+    );
+
+    if let Err(err) = result_assign_unauthorized {
+        // err is actix_web::Error, which should wrap our AppError::Unauthorized
+        let response = err.error_response();
+        assert_eq!(
+            response.status(),
+            actix_web::http::StatusCode::UNAUTHORIZED,
+            "Status code should be 401 Unauthorized."
+        );
+
+        // Optionally, verify the body of the error response
+        // This requires getting the body from the HttpResponse parts
+        // For example, if using actix_web::body::to_bytes
+        // let body_bytes = actix_web::body::to_bytes(response.into_body()).await.unwrap();
+        // let body_str = String::from_utf8_lossy(&body_bytes);
+        // assert!(body_str.contains("Missing token"), "Error message mismatch. Body: {}", body_str);
+    } else {
+        panic!("Should have resulted in an Err for unauthorized access.");
+    }
+
+    // Cleanup
+    cleanup_user(&pool, owner_email).await;
+    cleanup_user(&pool, assignee_email).await;
+}

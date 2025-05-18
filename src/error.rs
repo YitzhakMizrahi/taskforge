@@ -91,8 +91,8 @@ impl ResponseError for AppError {
 /// - Unique constraint violations (error code "23505") are mapped to `AppError::BadRequest`
 ///   with messages like "Username already taken" or "Email already registered" if the
 ///   constraint name matches known patterns. Otherwise, a generic unique violation message is used.
-/// All other database errors, or errors where specific codes/constraints cannot be determined,
-/// are mapped to `AppError::DatabaseError`, which results in a generic internal server error response.
+/// - All other database errors, or errors where specific codes/constraints cannot be determined,
+///   are mapped to `AppError::DatabaseError`, which results in a generic internal server error response.
 impl From<sqlx::Error> for AppError {
     fn from(error: sqlx::Error) -> AppError {
         match error {
@@ -122,9 +122,9 @@ impl From<sqlx::Error> for AppError {
                                     }
                                 }
                                 // Generic unique violation message if specific constraint name didn't match known ones
-                                return AppError::BadRequest(
+                                AppError::BadRequest(
                                     "A unique value constraint was violated".into(),
-                                );
+                                )
                             } else {
                                 // Unique violation (23505) but no constraint name available.
                                 AppError::DatabaseError(db_err.to_string())

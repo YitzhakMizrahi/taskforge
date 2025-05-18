@@ -148,19 +148,69 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "SERVER_PORT must be a number")]
     fn test_config_from_env_invalid_server_port_panics() {
-        // Set required DATABASE_URL to avoid panicking on that first
-        env::set_var("DATABASE_URL", "postgres://test_for_port_panic");
-        // Set an invalid SERVER_PORT
+        let original_db_url = env::var("DATABASE_URL").ok();
+        let original_server_port = env::var("SERVER_PORT").ok();
+        let original_server_host = env::var("SERVER_HOST").ok();
+
+        // Set DATABASE_URL to a valid dummy value to ensure it's not the cause of panic
+        env::set_var("DATABASE_URL", "postgres://test_for_invalid_port_panic");
+        // Set SERVER_PORT to an invalid value, this should cause the panic
         env::set_var("SERVER_PORT", "not_a_port");
-        // Ensure SERVER_HOST is benign or use its default
-        env::remove_var("SERVER_HOST");
+        // Set SERVER_HOST to a valid value or let it default if that's intended
+        // For this test, ensuring it's explicitly set to something valid is safer.
+        env::set_var("SERVER_HOST", "127.0.0.1");
 
-        Config::from_env(); // This should panic
+        let result = std::panic::catch_unwind(|| {
+            Config::from_env(); // This call is expected to panic
+        });
 
-        // Clean up env vars used in this test
-        env::remove_var("DATABASE_URL");
-        env::remove_var("SERVER_PORT");
+        // Restore original environment variables regardless of panic outcome
+        if let Some(val) = original_db_url {
+            env::set_var("DATABASE_URL", val);
+        } else {
+            env::remove_var("DATABASE_URL");
+        }
+        if let Some(val) = original_server_port {
+            env::set_var("SERVER_PORT", val);
+        } else {
+            env::remove_var("SERVER_PORT");
+        }
+        if let Some(val) = original_server_host {
+            env::set_var("SERVER_HOST", val);
+        } else {
+            env::remove_var("SERVER_HOST");
+        }
+
+        assert!(
+            result.is_err(),
+            "Config::from_env should have panicked due to invalid SERVER_PORT."
+        );
+
+        // Check the panic message
+        let panic_payload_err = result
+            .err()
+            .expect("Test did not panic as expected, or panic was already handled.");
+        let panic_message_matches = if let Some(panic_msg_string) = panic_payload_err.downcast_ref::<String>() {
+            panic_msg_string.contains("SERVER_PORT must be a number")
+        } else if let Some(panic_msg_str) = panic_payload_err.downcast_ref::<&str>() {
+            panic_msg_str.contains("SERVER_PORT must be a number")
+        } else {
+            false
+        };
+        
+        if !panic_message_matches {
+            let actual_message = if let Some(s) = panic_payload_err.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = panic_payload_err.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                format!("Panic payload of unknown type: {:?}", panic_payload_err)
+            };
+            panic!(
+                "Panic message did not contain 'SERVER_PORT must be a number'. Got: '{}'",
+                actual_message
+            );
+        }
     }
 }

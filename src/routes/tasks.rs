@@ -7,6 +7,7 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
+// use log; // Keep or remove, eprintln! will be used for now
 
 /// Retrieves a list of tasks for the authenticated user.
 ///
@@ -294,6 +295,129 @@ pub async fn delete_task(
     }
 
     Ok(HttpResponse::NoContent().finish())
+}
+
+/// Assigns a task to a specified user.
+///
+/// The authenticated user must be the owner of the task to assign it.
+/// The assignee must be an existing user.
+///
+/// ## Path Parameters:
+/// - `task_id`: The UUID of the task to assign.
+///
+/// ## Request Body:
+/// A JSON object with `assignee_id`:
+///   ```json
+///   {
+///     "assignee_id": 123
+///   }
+///   ```
+///
+/// ## Responses:
+/// - `200 OK`: Returns the updated `Task` object with the new assignee.
+/// - `400 Bad Request`: If the `assignee_id` does not correspond to an existing user.
+/// - `401 Unauthorized`: If the request lacks a valid authentication token.
+/// - `404 Not Found`: If the task does not exist or is not owned by the authenticated user.
+/// - `500 Internal Server Error`: For database errors or other unexpected issues.
+#[post("/{task_id}/assign")]
+pub async fn assign_task(
+    pool: web::Data<PgPool>,
+    task_id_path: web::Path<Uuid>,
+    authenticated_user: AuthenticatedUserId,
+    assignment_data: web::Json<crate::models::task::AssignTaskRequest>, // Explicit path
+) -> Result<impl Responder, AppError> {
+    let task_uuid = task_id_path.into_inner();
+    let assigner_id = authenticated_user.0;
+    let assignee_id = assignment_data.assignee_id;
+
+    eprintln!(
+        "[assign_task_DEBUG] Attempting assignment: task_uuid={}, assigner_id={}, assignee_id={}",
+        task_uuid, assigner_id, assignee_id
+    );
+
+    // 1. Verify task existence and ownership by the assigner
+    let task_owner_check: Option<(i32,)> =
+        sqlx::query_as("SELECT user_id FROM tasks WHERE id = $1")
+            .bind(task_uuid)
+            .fetch_optional(&**pool)
+            .await?;
+
+    match task_owner_check {
+        Some((owner_id,)) => {
+            eprintln!(
+                "[assign_task_DEBUG] Ownership check: task_uuid={} found with owner_id={}. Assigner_id={}",
+                task_uuid,
+                owner_id,
+                assigner_id
+            );
+            if owner_id != assigner_id {
+                eprintln!(
+                    "[assign_task_DEBUG] Ownership mismatch: task_uuid={} owner_id={} != assigner_id={}",
+                    task_uuid,
+                    owner_id,
+                    assigner_id
+                );
+                return Err(AppError::NotFound(
+                    "Task not found or not owned by user".into(),
+                ));
+            }
+        }
+        None => {
+            eprintln!(
+                "[assign_task_DEBUG] Task not found during ownership check: task_uuid={}",
+                task_uuid
+            );
+            return Err(AppError::NotFound("Task not found".into()));
+        }
+    }
+
+    // 2. Verify assignee_id exists as a user in the 'users' table.
+    let assignee_exists: Option<(i32,)> = sqlx::query_as("SELECT id FROM users WHERE id = $1")
+        .bind(assignee_id)
+        .fetch_optional(&**pool)
+        .await?;
+
+    if assignee_exists.is_none() {
+        eprintln!(
+            "[assign_task_DEBUG] Assignee user not found: assignee_id={}",
+            assignee_id
+        );
+        return Err(AppError::BadRequest("Assignee user not found".into()));
+    }
+    eprintln!(
+        "[assign_task_DEBUG] Assignee user check: assignee_id={} found.",
+        assignee_id
+    );
+
+    // 3. Update task: SET assigned_to = $assignee_id, updated_at = NOW()
+    eprintln!(
+        "[assign_task_DEBUG] Preparing to update task: task_uuid={}, assigner_id={}, assignee_id={}",
+        task_uuid, assigner_id, assignee_id
+    );
+    let updated_task = sqlx::query_as::<_, Task>(
+        "UPDATE tasks SET assigned_to = $1, updated_at = NOW() 
+         WHERE id = $2 AND user_id = $3 
+         RETURNING *",
+    )
+    .bind(assignee_id)
+    .bind(task_uuid)
+    .bind(assigner_id) // Ensures ownership again during the atomic update
+    .fetch_one(&**pool)
+    .await
+    .map_err(|e| {
+        eprintln!(
+            "[assign_task_DEBUG] DB error during task update for task_uuid={}: {}",
+            task_uuid, e
+        );
+        let app_error: AppError = AppError::from(e);
+        app_error
+    })?;
+
+    eprintln!(
+        "[assign_task_DEBUG] Task successfully assigned: task_uuid={}",
+        task_uuid
+    );
+    Ok(HttpResponse::Ok().json(updated_task))
 }
 
 #[cfg(test)]
