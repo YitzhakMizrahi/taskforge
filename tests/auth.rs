@@ -78,8 +78,12 @@ async fn test_register_and_login_flow() {
         "Duplicate email registration did not fail as expected with 400. Body: {:?}",
         String::from_utf8_lossy(&body_bytes_conflict)
     );
-    let error_response_email_conflict: serde_json::Value = serde_json::from_slice(&body_bytes_conflict).unwrap();
-    assert_eq!(error_response_email_conflict["error"], "Email already registered");
+    let error_response_email_conflict: serde_json::Value =
+        serde_json::from_slice(&body_bytes_conflict).unwrap();
+    assert_eq!(
+        error_response_email_conflict["error"],
+        "Email already registered"
+    );
 
     // Try to register another user with the same username but different email (should also fail)
     let register_payload_username_conflict = json!({
@@ -100,8 +104,12 @@ async fn test_register_and_login_flow() {
         "Duplicate username registration did not fail as expected with 400. Body: {:?}",
         String::from_utf8_lossy(&body_bytes_username_conflict)
     );
-    let error_response_username_conflict: serde_json::Value = serde_json::from_slice(&body_bytes_username_conflict).unwrap();
-    assert_eq!(error_response_username_conflict["error"], "Username already taken");
+    let error_response_username_conflict: serde_json::Value =
+        serde_json::from_slice(&body_bytes_username_conflict).unwrap();
+    assert_eq!(
+        error_response_username_conflict["error"],
+        "Username already taken"
+    );
 
     // Login with the registered user
     let login_payload = json!({
@@ -436,7 +444,8 @@ async fn test_protected_route_with_invalid_tokens() {
         sub: 999, // Arbitrary user ID
         exp: (chrono::Utc::now() - chrono::Duration::hours(1)).timestamp() as usize,
     };
-    let jwt_secret_for_test = std::env::var("JWT_SECRET").unwrap_or_else(|_| "test_secret".to_string());
+    let jwt_secret_for_test =
+        std::env::var("JWT_SECRET").unwrap_or_else(|_| "test_secret".to_string());
     let expired_token = jsonwebtoken::encode(
         &jsonwebtoken::Header::default(),
         &expired_claims,
@@ -449,7 +458,10 @@ async fn test_protected_route_with_invalid_tokens() {
         .append_header(("Authorization", format!("Bearer {}", expired_token)))
         .to_request();
     let resp_expired_result = test::try_call_service(&app, req_expired).await;
-    assert!(resp_expired_result.is_err(), "Expected an error for expired token");
+    assert!(
+        resp_expired_result.is_err(),
+        "Expected an error for expired token"
+    );
     if let Err(e) = resp_expired_result {
         let err_response_expired = e.error_response();
         assert_eq!(
@@ -468,7 +480,10 @@ async fn test_protected_route_with_invalid_tokens() {
         .append_header(("Authorization", format!("Bearer {}", malformed_token)))
         .to_request();
     let resp_malformed_result = test::try_call_service(&app, req_malformed).await;
-    assert!(resp_malformed_result.is_err(), "Expected an error for malformed token");
+    assert!(
+        resp_malformed_result.is_err(),
+        "Expected an error for malformed token"
+    );
     if let Err(e) = resp_malformed_result {
         let err_response_malformed = e.error_response();
         assert_eq!(
@@ -498,7 +513,10 @@ async fn test_protected_route_with_invalid_tokens() {
         .append_header(("Authorization", format!("Bearer {}", token_wrong_secret)))
         .to_request();
     let resp_wrong_secret_result = test::try_call_service(&app, req_wrong_secret).await;
-    assert!(resp_wrong_secret_result.is_err(), "Expected an error for token with wrong secret");
+    assert!(
+        resp_wrong_secret_result.is_err(),
+        "Expected an error for token with wrong secret"
+    );
     if let Err(e) = resp_wrong_secret_result {
         let err_response_wrong_secret = e.error_response();
         assert_eq!(

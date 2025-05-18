@@ -499,11 +499,19 @@ async fn test_get_tasks_with_filtering() {
             .set_json(&task_payload)
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED, "Failed to create task for filtering setup");
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::CREATED,
+            "Failed to create task for filtering setup"
+        );
         let task: Task = test::read_body_json(resp).await;
         created_task_ids.push(task.id);
     }
-    assert_eq!(created_task_ids.len(), 5, "Incorrect number of tasks created for setup");
+    assert_eq!(
+        created_task_ids.len(),
+        5,
+        "Incorrect number of tasks created for setup"
+    );
 
     // --- Test filtering ---
 
@@ -516,7 +524,9 @@ async fn test_get_tasks_with_filtering() {
     assert_eq!(resp_status_todo.status(), actix_web::http::StatusCode::OK);
     let tasks_status_todo: Vec<Task> = test::read_body_json(resp_status_todo).await;
     assert_eq!(tasks_status_todo.len(), 2);
-    assert!(tasks_status_todo.iter().all(|t| t.status == TaskStatus::Todo));
+    assert!(tasks_status_todo
+        .iter()
+        .all(|t| t.status == TaskStatus::Todo));
 
     // Filter by priority: Medium (should be 2 tasks: Bravo, Delta)
     let req_prio_medium = test::TestRequest::get()
@@ -527,7 +537,9 @@ async fn test_get_tasks_with_filtering() {
     assert_eq!(resp_prio_medium.status(), actix_web::http::StatusCode::OK);
     let tasks_prio_medium: Vec<Task> = test::read_body_json(resp_prio_medium).await;
     assert_eq!(tasks_prio_medium.len(), 2);
-    assert!(tasks_prio_medium.iter().all(|t| t.priority == Some(TaskPriority::Medium)));
+    assert!(tasks_prio_medium
+        .iter()
+        .all(|t| t.priority == Some(TaskPriority::Medium)));
 
     // Filter by search: "Searchable" (should be 2 tasks: Alpha, Delta)
     let req_search = test::TestRequest::get()
@@ -551,7 +563,6 @@ async fn test_get_tasks_with_filtering() {
     let tasks_search_title: Vec<Task> = test::read_body_json(resp_search_title).await;
     assert_eq!(tasks_search_title.len(), 1);
     assert_eq!(tasks_search_title[0].title, "Alpha Todo Low");
-
 
     // Filter by status and priority: status=todo & priority=medium (should be 1 task: Delta)
     let req_status_prio = test::TestRequest::get()
@@ -624,7 +635,11 @@ async fn test_create_task_minimal_fields() {
         .set_json(&minimal_payload)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED, "Failed to create task with minimal fields");
+    assert_eq!(
+        resp.status(),
+        actix_web::http::StatusCode::CREATED,
+        "Failed to create task with minimal fields"
+    );
 
     let created_task: Task = test::read_body_json(resp).await;
     assert_eq!(created_task.title, "Minimal Task Title");
@@ -659,10 +674,15 @@ async fn test_update_non_existent_task() {
     .await;
 
     let user_email = "non_existent_update_user@example.com";
-    cleanup_user(&pool, user_email).await; 
-    let test_user = register_and_login_user(&app, user_email, "non_existent_updater", "PassNonExistent1!")
-        .await
-        .expect("Failed to register/login user for non-existent task update test");
+    cleanup_user(&pool, user_email).await;
+    let test_user = register_and_login_user(
+        &app,
+        user_email,
+        "non_existent_updater",
+        "PassNonExistent1!",
+    )
+    .await
+    .expect("Failed to register/login user for non-existent task update test");
 
     let non_existent_task_id = uuid::Uuid::new_v4(); // Random, non-existent UUID
     let update_payload = json!({
@@ -676,7 +696,11 @@ async fn test_update_non_existent_task() {
         .set_json(&update_payload)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND, "Updating non-existent task did not return 404");
+    assert_eq!(
+        resp.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "Updating non-existent task did not return 404"
+    );
 
     cleanup_user(&pool, user_email).await;
 }
@@ -704,9 +728,14 @@ async fn test_delete_non_existent_task() {
 
     let user_email = "non_existent_delete_user@example.com";
     cleanup_user(&pool, user_email).await;
-    let test_user = register_and_login_user(&app, user_email, "non_existent_deleter", "PassNonExistent2!")
-        .await
-        .expect("Failed to register/login user for non-existent task delete test");
+    let test_user = register_and_login_user(
+        &app,
+        user_email,
+        "non_existent_deleter",
+        "PassNonExistent2!",
+    )
+    .await
+    .expect("Failed to register/login user for non-existent task delete test");
 
     let non_existent_task_id = uuid::Uuid::new_v4(); // Random, non-existent UUID
 
@@ -715,7 +744,11 @@ async fn test_delete_non_existent_task() {
         .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND, "Deleting non-existent task did not return 404");
+    assert_eq!(
+        resp.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "Deleting non-existent task did not return 404"
+    );
 
     cleanup_user(&pool, user_email).await;
 }
@@ -740,12 +773,13 @@ async fn test_task_invalid_uuid_format() {
             ),
     )
     .await;
-    
+
     let user_email = "invalid_uuid_user@example.com";
     cleanup_user(&pool, user_email).await;
-    let test_user = register_and_login_user(&app, user_email, "invalid_uuid_user", "PassInvalidUuid1!")
-        .await
-        .expect("Failed to register/login user for invalid uuid test");
+    let test_user =
+        register_and_login_user(&app, user_email, "invalid_uuid_user", "PassInvalidUuid1!")
+            .await
+            .expect("Failed to register/login user for invalid uuid test");
 
     let invalid_uuid = "not-a-valid-uuid";
 
@@ -756,7 +790,11 @@ async fn test_task_invalid_uuid_format() {
         .to_request();
     let resp_get = test::call_service(&app, req_get).await;
     // Actix path extractor for Uuid usually results in 404 if parsing fails before handler
-    assert_eq!(resp_get.status(), actix_web::http::StatusCode::NOT_FOUND, "GET with invalid UUID did not return 404");
+    assert_eq!(
+        resp_get.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "GET with invalid UUID did not return 404"
+    );
 
     // Test PUT with invalid UUID
     let update_payload = json!({
@@ -769,7 +807,11 @@ async fn test_task_invalid_uuid_format() {
         .set_json(&update_payload)
         .to_request();
     let resp_put = test::call_service(&app, req_put).await;
-    assert_eq!(resp_put.status(), actix_web::http::StatusCode::NOT_FOUND, "PUT with invalid UUID did not return 404");
+    assert_eq!(
+        resp_put.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "PUT with invalid UUID did not return 404"
+    );
 
     // Test DELETE with invalid UUID
     let req_delete = test::TestRequest::delete()
@@ -777,7 +819,11 @@ async fn test_task_invalid_uuid_format() {
         .append_header((header::AUTHORIZATION, format!("Bearer {}", test_user.token)))
         .to_request();
     let resp_delete = test::call_service(&app, req_delete).await;
-    assert_eq!(resp_delete.status(), actix_web::http::StatusCode::NOT_FOUND, "DELETE with invalid UUID did not return 404");
+    assert_eq!(
+        resp_delete.status(),
+        actix_web::http::StatusCode::NOT_FOUND,
+        "DELETE with invalid UUID did not return 404"
+    );
 
     cleanup_user(&pool, user_email).await;
 }

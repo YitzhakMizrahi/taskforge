@@ -95,17 +95,22 @@ impl From<sqlx::Error> for AppError {
                 // Check if the error is a PostgreSQL specific error
                 if let Some(pg_err) = db_err.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() {
                     match pg_err.code() {
-                        "23505" => { // Unique violation
+                        "23505" => {
+                            // Unique violation
                             if let Some(constraint_name) = pg_err.constraint() {
-                                if constraint_name.contains("username") { // Assuming constraint name like 'users_username_key'
+                                if constraint_name.contains("username") {
+                                    // Assuming constraint name like 'users_username_key'
                                     return AppError::BadRequest("Username already taken".into());
                                 }
-                                if constraint_name.contains("email") { // Assuming constraint name like 'users_email_key'
+                                if constraint_name.contains("email") {
+                                    // Assuming constraint name like 'users_email_key'
                                     return AppError::BadRequest("Email already registered".into());
                                 }
                             }
                             // Generic unique violation message if constraint name doesn't give more info
-                            return AppError::BadRequest("A unique value constraint was violated".into());
+                            return AppError::BadRequest(
+                                "A unique value constraint was violated".into(),
+                            );
                         }
                         // We can add more specific PostgreSQL error codes here if needed
                         _ => AppError::DatabaseError(pg_err.to_string()),
